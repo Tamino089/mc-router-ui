@@ -123,101 +123,101 @@ function trapFocus(el) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ROUTE MODAL
+// THEME TOGGLE
 // ══════════════════════════════════════════════════════════════════════════════
-let usedPorts    = [];
+function toggleTheme() {
+  const current = document.documentElement.dataset.theme || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('mc-theme', next);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTE MODAL (simplified — single hostname + backend input, no confirm step)
+// ══════════════════════════════════════════════════════════════════════════════
 let craftyServers = [];
-let cfDomains    = [];
 let validationTimer = null;
 let currentValidation = null;
 
 async function openRouteModal() {
-  // Reset form
   document.getElementById('route-modal-title').textContent = 'Create Route';
-  document.getElementById('route-submit').textContent = 'Create';
+  document.getElementById('route-submit').textContent = 'Create Route';
   document.getElementById('f-route-id').value = '';
-  document.getElementById('f-domain-select').value = '';
-  document.getElementById('f-hostname-custom').value = '';
-  document.getElementById('f-hostname-custom').style.display = 'none';
-  document.getElementById('f-server-select').value = '';
-  document.getElementById('f-backend-manual').value = '';
-  document.getElementById('f-backend-manual').style.display = 'none';
-  document.getElementById('f-port').value = '';
-  document.getElementById('port-status-bar').style.display = 'none';
+  document.getElementById('f-hostname').value = '';
+  document.getElementById('f-hostname').disabled = false;
+  document.getElementById('f-backend').value = '';
   document.getElementById('f-is-default').checked = false;
   resetValidation();
 
-  // Load used ports
-  try {
-    const r = await fetch('/api/ports/used');
-    const d = await r.json();
-    usedPorts = d.used_ports || [];
-  } catch { usedPorts = []; }
-
-  // Load CF domains
-  const domainSel = document.getElementById('f-domain-select');
-  while (domainSel.options.length > 3) domainSel.remove(3);
-  if (CF_ENABLED && (IS_ADMIN || USER_PERMS.has('see_cloudflare'))) {
-    try {
-      const r = await fetch('/api/cf/records');
-      const d = await r.json();
-      if (d.success) {
-        cfDomains = d.records;
-        d.records.forEach(rec => {
-          const opt = new Option(`${rec.name} (${rec.content})`, rec.name);
-          domainSel.add(opt);
-        });
-      }
-    } catch { cfDomains = []; }
-  }
-
-  // Load Crafty servers
-  const serverSel = document.getElementById('f-server-select');
-  while (serverSel.options.length > 2) serverSel.remove(2);
+  // Load Crafty servers for the quick-fill picker
+  const picker = document.getElementById('crafty-picker');
+  picker.innerHTML = '';
   if (IS_ADMIN || USER_PERMS.has('see_servers')) {
     try {
       const r = await fetch('/api/crafty/servers');
       const d = await r.json();
-      if (d.success) {
+      if (d.success && d.servers.length) {
         craftyServers = d.servers;
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:11px;color:var(--muted);width:100%;margin-bottom:2px;';
+        label.textContent = 'Quick-fill from Crafty:';
+        picker.appendChild(label);
         d.servers.forEach(s => {
-          const portTaken = usedPorts.includes(s.port);
-          const label = `${s.name} (port ${s.port})${portTaken ? ' ⚠ Port in use' : ''}`;
-          const opt = new Option(label, JSON.stringify({ host: s.container_address.split(':')[0], port: s.port, id: s.id }));
-          serverSel.add(opt);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'crafty-picker-btn';
+          btn.innerHTML = `<div class="dot ${s.running ? 'dot-green' : 'dot-gray'}"></div>${esc(s.name)} <span style="color:var(--muted);">:${s.port}</span>`;
+          btn.onclick = () => {
+            document.getElementById('f-backend').value = s.container_address;
+            triggerValidation();
+          };
+          picker.appendChild(btn);
         });
       }
     } catch { craftyServers = []; }
   }
 
   openModal('route-modal');
+  setTimeout(() => document.getElementById('f-hostname').focus(), 100);
 }
 
 function openEditRouteModal(id, hostname, backend, isDefault) {
   document.getElementById('route-modal-title').textContent = 'Edit Route';
-  document.getElementById('route-submit').textContent = 'Save';
+  document.getElementById('route-submit').textContent = 'Save Changes';
   document.getElementById('f-route-id').value = id;
   document.getElementById('f-is-default').checked = isDefault;
 
-  const domainSel = document.getElementById('f-domain-select');
-  domainSel.value = '__custom__';
-  document.getElementById('f-hostname-custom').style.display = 'block';
-  document.getElementById('f-hostname-custom').value = hostname === '__default__' ? '' : hostname;
-  document.getElementById('f-hostname-custom').disabled = isDefault;
+  const hostnameInput = document.getElementById('f-hostname');
+  hostnameInput.value = (hostname === '__default__' || isDefault) ? '' : hostname;
+  hostnameInput.disabled = isDefault;
 
-  const serverSel = document.getElementById('f-server-select');
-  serverSel.value = '__manual__';
-  const manualInput = document.getElementById('f-backend-manual');
-  manualInput.style.display = 'block';
+  document.getElementById('f-backend').value = backend;
 
-  const colonIndex = backend.lastIndexOf(':');
-  let host = backend, port = '25565';
-  if (colonIndex !== -1) {
-    host = backend.substring(0, colonIndex);
-    port = backend.substring(colonIndex + 1);
+  // Load Crafty picker for edit mode too
+  const picker = document.getElementById('crafty-picker');
+  picker.innerHTML = '';
+  if (IS_ADMIN || USER_PERMS.has('see_servers')) {
+    fetch('/api/crafty/servers').then(r => r.json()).then(d => {
+      if (d.success && d.servers.length) {
+        craftyServers = d.servers;
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:11px;color:var(--muted);width:100%;margin-bottom:2px;';
+        label.textContent = 'Quick-fill from Crafty:';
+        picker.appendChild(label);
+        d.servers.forEach(s => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'crafty-picker-btn';
+          btn.innerHTML = `<div class="dot ${s.running ? 'dot-green' : 'dot-gray'}"></div>${esc(s.name)} <span style="color:var(--muted);">:${s.port}</span>`;
+          btn.onclick = () => {
+            document.getElementById('f-backend').value = s.container_address;
+            triggerValidation();
+          };
+          picker.appendChild(btn);
+        });
+      }
+    }).catch(() => {});
   }
-  manualInput.value = `${host}:${port}`;
-  document.getElementById('f-port').value = port;
 
   resetValidation();
   openModal('route-modal');
@@ -226,114 +226,22 @@ function openEditRouteModal(id, hostname, backend, isDefault) {
 
 function closeRouteModal() { closeModal('route-modal'); }
 
-function onDomainSelect() {
-  const val = document.getElementById('f-domain-select').value;
-  const customInput = document.getElementById('f-hostname-custom');
-  if (val === '__custom__') {
-    customInput.style.display = 'block';
-    customInput.disabled = false;
-    document.getElementById('f-is-default').checked = false;
-  } else if (val === '__default__') {
-    customInput.style.display = 'none';
-    document.getElementById('f-is-default').checked = true;
-    document.getElementById('f-port').value = '';
-  } else if (val === '') {
-    customInput.style.display = 'none';
-    document.getElementById('f-is-default').checked = false;
-  } else {
-    customInput.style.display = 'none';
-    document.getElementById('f-is-default').checked = false;
-  }
-  triggerValidation();
-}
-
-function onServerSelect() {
-  const val = document.getElementById('f-server-select').value;
-  const manualInput = document.getElementById('f-backend-manual');
-  const portInput = document.getElementById('f-port');
-
-  if (val === '__manual__') {
-    manualInput.style.display = 'block';
-  } else if (val === '') {
-    manualInput.style.display = 'none';
-    portInput.value = '';
-    document.getElementById('port-status-bar').style.display = 'none';
-  } else {
-    manualInput.style.display = 'none';
-    try {
-      const data = JSON.parse(val);
-      portInput.value = data.port;
-      checkPortStatus(data.port);
-    } catch {}
-  }
-  triggerValidation();
-}
-
-function onPortInput() {
-  const port = parseInt(document.getElementById('f-port').value);
-  if (!isNaN(port)) checkPortStatus(port);
-  triggerValidation();
-}
-
-function checkPortStatus(port) {
-  const bar = document.getElementById('port-status-bar');
-  const taken = usedPorts.includes(port);
-  if (taken) {
-    const nextFree = findNextFreePort(port);
-    bar.className = 'port-status-bar taken';
-    bar.innerHTML = `⚠ Port ${port} is already in use. Suggestion: <strong>${nextFree}</strong> <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;" onclick="applyPort(${nextFree})">Apply</button>`;
-    bar.style.display = 'flex';
-  } else if (port) {
-    bar.className = 'port-status-bar free';
-    bar.innerHTML = `✓ Port ${port} is free`;
-    bar.style.display = 'flex';
-  } else {
-    bar.style.display = 'none';
-  }
-}
-
-function findNextFreePort(fromPort) {
-  let candidate = fromPort + 1;
-  while (usedPorts.includes(candidate) && candidate < 65535) candidate++;
-  return candidate;
-}
-
-function applyPort(port) {
-  document.getElementById('f-port').value = port;
-  checkPortStatus(port);
-  triggerValidation();
-}
-
 function onDefaultToggle() {
   const checked = document.getElementById('f-is-default').checked;
-  if (checked) {
-    document.getElementById('f-domain-select').value = '__default__';
-    document.getElementById('f-hostname-custom').style.display = 'none';
-    document.getElementById('f-hostname-custom').disabled = true;
-  } else {
-    document.getElementById('f-hostname-custom').disabled = false;
-  }
+  const hostnameInput = document.getElementById('f-hostname');
+  hostnameInput.disabled = checked;
+  if (checked) hostnameInput.value = '';
   triggerValidation();
 }
 
 function getEffectiveHostname() {
-  const domainVal = document.getElementById('f-domain-select').value;
   const isDefault = document.getElementById('f-is-default').checked;
-  if (isDefault || domainVal === '__default__') return '__default__';
-  if (domainVal === '__custom__') return document.getElementById('f-hostname-custom').value.trim().toLowerCase();
-  return domainVal;
+  if (isDefault) return '__default__';
+  return document.getElementById('f-hostname').value.trim().toLowerCase();
 }
 
 function getEffectiveBackend() {
-  const serverVal = document.getElementById('f-server-select').value;
-  const port = document.getElementById('f-port').value;
-  if (serverVal === '__manual__') return document.getElementById('f-backend-manual').value.trim();
-  if (serverVal === '') return '';
-  try {
-    const data = JSON.parse(serverVal);
-    return `${data.host}:${port || data.port}`;
-  } catch {}
-  return '';
+  return document.getElementById('f-backend').value.trim();
 }
 
 // ── Live validation ──────────────────────────────────────────────────────────
@@ -386,83 +294,54 @@ function triggerValidation() {
   validationTimer = setTimeout(performValidation, 500);
 }
 
-// Route form submit → confirmation modal
+// Route form submit — direct submit with validation warning
 document.addEventListener('DOMContentLoaded', () => {
   const routeForm = document.getElementById('route-form');
   if (!routeForm) return;
 
   routeForm.addEventListener('submit', e => {
     e.preventDefault();
+
     const hostname  = getEffectiveHostname();
     const backend   = getEffectiveBackend();
     const isDefault = document.getElementById('f-is-default').checked;
 
-    document.getElementById('confirm-type').textContent     = isDefault ? 'Default Route (Fallback)' : 'Subdomain';
-    document.getElementById('confirm-hostname').textContent = isDefault ? '*' : hostname;
-    document.getElementById('confirm-backend').textContent  = backend;
+    // Basic required field check
+    if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
+    if (!backend) { showToast('Backend server is required', 'error'); return; }
 
-    const issuesBox = document.getElementById('confirm-issues');
-    issuesBox.style.display = 'none'; issuesBox.innerHTML = '';
-    const warns = [], errors = [];
-
+    // Check for validation errors — warn but allow override
     if (currentValidation) {
-      Object.values(currentValidation).forEach(c => {
-        if (c.status === 'error')   errors.push(c.message);
-        if (c.status === 'warning') warns.push(c.message);
-      });
-    } else {
-      warns.push('Live validation was not fully completed.');
-    }
-
-    if (errors.length || warns.length) {
-      issuesBox.style.display = 'block';
-      let html = '<strong>Please note the following:</strong><ul style="margin-left:14px;margin-top:6px;">';
-      errors.forEach(m => html += `<li style="margin-bottom:4px;">🛑 ${m}</li>`);
-      warns.forEach(m  => html += `<li style="margin-bottom:4px;">⚠ ${m}</li>`);
-      issuesBox.innerHTML = html + '</ul>';
-
-      const btn = document.getElementById('confirm-submit-btn');
+      const errors = Object.values(currentValidation)
+        .filter(c => c.status === 'error')
+        .map(c => c.message);
       if (errors.length) {
-        btn.textContent = 'Save Anyway';
-        btn.className = 'btn btn-danger';
-      } else {
-        btn.textContent = 'Confirm & Save';
-        btn.className = 'btn btn-primary';
+        const proceed = confirm('Validation issues found:\n\n' + errors.join('\n') + '\n\nSave anyway?');
+        if (!proceed) return;
       }
     }
 
-    closeRouteModal();
-    openModal('route-confirm-modal');
+    const routeId = document.getElementById('f-route-id').value;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = routeId ? `/routes/edit/${routeId}` : '/routes/add';
+
+    const fields = {
+      hostname: hostname,
+      backend:  backend,
+      is_default: isDefault ? 'true' : ''
+    };
+
+    Object.entries(fields).forEach(([k, v]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden'; input.name = k; input.value = v;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
   });
 });
-
-function closeRouteConfirmModal() { closeModal('route-confirm-modal'); }
-
-function submitRouteFinal() {
-  const routeId  = document.getElementById('f-route-id').value;
-  const hostname  = getEffectiveHostname();
-  const backend   = getEffectiveBackend();
-  const isDefault = document.getElementById('f-is-default').checked;
-
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = routeId ? `/routes/edit/${routeId}` : '/routes/add';
-
-  const fields = {
-    hostname: hostname,
-    backend:  backend,
-    is_default: isDefault ? 'true' : ''
-  };
-
-  Object.entries(fields).forEach(([k, v]) => {
-    const input = document.createElement('input');
-    input.type = 'hidden'; input.name = k; input.value = v;
-    form.appendChild(input);
-  });
-
-  document.body.appendChild(form);
-  form.submit();
-}
 
 // ── Route delete confirm ─────────────────────────────────────────────────────
 function confirmDeleteRoute(id, hostname) {

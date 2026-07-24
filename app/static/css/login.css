@@ -1,35 +1,56 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    MC Router UI — Login Page Styles
-   Cloudflare-inspired dark design
+   Clean light/dark dual-theme
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  --bg:          #0c0d10;
-  --surface:     #111318;
-  --glass:       rgba(17, 19, 24, 0.88);
+/* ── Dark tokens (default) ─────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --bg:          #0e0f13;
+  --surface:     #16181d;
+  --glass:       rgba(22, 24, 29, 0.88);
   --border:      rgba(255, 255, 255, 0.07);
   --accent:      #F6821F;
-  --accent-light:#FFAB40;
-  --accent-glow: rgba(246, 130, 31, 0.28);
+  --accent-light:#FF9D3D;
+  --accent-glow: rgba(246, 130, 31, 0.22);
   --danger:      #ef4444;
   --danger-glow: rgba(239, 68, 68, 0.18);
   --text:        #f0f0f2;
   --muted:       #6b7585;
+  --input-bg:    rgba(0, 0, 0, 0.3);
   --r-md:        12px;
   --r-lg:        16px;
   --r-xl:        20px;
+  color-scheme: dark;
+}
+
+/* ── Light tokens ──────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:          #f6f7f9;
+  --surface:     #ffffff;
+  --glass:       rgba(255, 255, 255, 0.92);
+  --border:      rgba(0, 0, 0, 0.08);
+  --accent:      #E6740C;
+  --accent-light:#F6821F;
+  --accent-glow: rgba(246, 130, 31, 0.15);
+  --danger:      #dc2626;
+  --danger-glow: rgba(220, 38, 38, 0.12);
+  --text:        #1a1d23;
+  --muted:       #8b95a5;
+  --input-bg:    #f1f2f5;
+  color-scheme: light;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* ── Body: animated background ──────────────────────────────────────────────── */
+/* ── Body ─────────────────────────────────────────────────────────────────────── */
 body {
   background: var(--bg);
   color: var(--text);
@@ -44,6 +65,7 @@ body {
   overflow: hidden;
   position: relative;
   -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 /* Grid dot pattern background */
@@ -51,7 +73,7 @@ body::before {
   content: '';
   position: fixed; inset: 0;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
   background-size: 40px 40px;
   pointer-events: none; z-index: 0;
 }
@@ -60,18 +82,19 @@ body::before {
 .card {
   background: var(--glass);
   border: 1px solid var(--border);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--r-xl);
   padding: 44px 40px;
   width: 100%;
   max-width: 420px;
   position: relative; z-index: 10;
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.03) inset,
-    0 30px 70px rgba(0,0,0,0.65),
-    0 0 60px rgba(0,0,0,0.3);
-  animation: cardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  animation: cardIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-theme="dark"] .card {
+  box-shadow: 0 30px 70px rgba(0,0,0,0.65), 0 0 60px rgba(0,0,0,0.3);
 }
 
 @keyframes cardIn {
@@ -91,13 +114,11 @@ body::before {
   border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
 }
-.logo-icon svg { width: 24px; height: 24px; position: relative; z-index: 1; color: #fff; }
+.logo-icon svg { width: 24px; height: 24px; color: #fff; }
 
 .logo-info h1 {
-  font-size: 22px; font-weight: 700; color: #fff;
+  font-size: 22px; font-weight: 700; color: var(--text);
   letter-spacing: -0.5px; line-height: 1.1;
 }
 .logo-info span {
@@ -108,13 +129,12 @@ body::before {
 /* ── Error alert ──────────────────────────────────────────────────────────────── */
 .error-alert {
   display: flex; align-items: flex-start; gap: 10px;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.22);
-  color: #fca5a5;
+  background: var(--danger-glow);
+  border: 1px solid var(--danger-glow);
+  color: var(--danger);
   border-radius: var(--r-md);
   padding: 12px 15px;
   font-size: 13px; margin-bottom: 24px;
-  box-shadow: 0 4px 20px var(--danger-glow);
   animation: shakeIn 0.4s ease;
 }
 .error-alert-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
@@ -139,21 +159,20 @@ body::before {
 
 .form-group input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   color: var(--text);
   padding: 12px 14px;
   font-size: 14px;
   outline: none;
-  transition: all 0.2s ease;
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  transition: border-color 0.2s, box-shadow 0.2s;
   font-family: inherit;
 }
-.form-group input::placeholder { color: rgba(107, 117, 133, 0.5); }
+.form-group input::placeholder { color: var(--muted); opacity: 0.5; }
 .form-group input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow), inset 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 /* ── Submit button ────────────────────────────────────────────────────────────── */
@@ -165,17 +184,13 @@ body::before {
   padding: 12px;
   font-size: 14px; font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s;
   font-family: inherit;
   position: relative; overflow: hidden;
 }
-.btn-login:hover {
-  background: var(--accent-light);
-}
-.btn-login:active { transform: translateY(1px); }
-.btn-login.loading {
-  opacity: 0.8; pointer-events: none;
-}
+.btn-login:hover { background: var(--accent-light); }
+.btn-login:active { opacity: 0.85; }
+.btn-login.loading { opacity: 0.75; pointer-events: none; }
 .btn-login.loading::after {
   content: '';
   position: absolute; inset: 0;
@@ -191,6 +206,7 @@ body::before {
 .footer-text {
   position: relative; z-index: 10;
   font-size: 12px;
-  color: rgba(107, 117, 133, 0.4);
+  color: var(--muted);
+  opacity: 0.5;
   text-align: center;
 }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,6 +9,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="/static/css/main.css">
+
+<!-- Theme: apply before paint to avoid flash -->
+<script>
+(function(){var t=localStorage.getItem('mc-theme')||'dark';document.documentElement.dataset.theme=t;})();
+</script>
 
 <!-- Inject config for dashboard.js -->
 <script>
@@ -73,6 +78,15 @@ window.MC_UI_CONFIG = {
       <div class="dot dot-gray" id="router-dot"></div>
       <span id="router-status-text" style="font-size:12px;color:var(--muted);">Checking…</span>
     </div>
+
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+      <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
 
     <div class="user-chip">
       <span class="user-name">{{ current_user.username }}</span>
@@ -540,7 +554,7 @@ window.MC_UI_CONFIG = {
      MODALS
      ════════════════════════════════════════════════════════════════════════ -->
 
-<!-- Route Create/Edit Modal -->
+<!-- Route Create/Edit Modal (simplified) -->
 <div class="modal-overlay" id="route-modal" role="dialog" aria-modal="true" aria-labelledby="route-modal-title">
   <div class="modal">
     <div class="modal-header">
@@ -554,34 +568,10 @@ window.MC_UI_CONFIG = {
     <form id="route-form">
       <input type="hidden" id="f-route-id">
 
-      <div class="form-group">
-        <label for="f-domain-select">Domain (Hostname)</label>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <select id="f-domain-select" style="flex:1;" onchange="onDomainSelect()">
-            <option value="">Select or create new…</option>
-            <option value="__custom__">✏ Enter custom domain</option>
-            <option value="__default__">★ Default route (fallback)</option>
-          </select>
-          <input type="text" id="f-hostname-custom" placeholder="sub.domain.com" style="display:none;flex:1;" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="form-hint" id="f-domain-hint">Select an existing Cloudflare domain or enter a custom one.</div>
-      </div>
-
-      <div class="form-group">
-        <label for="f-server-select">Target Server (from Crafty)</label>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <select id="f-server-select" style="flex:1;" onchange="onServerSelect()">
-            <option value="">Select or enter manually…</option>
-            <option value="__manual__">✏ Enter manually</option>
-          </select>
-          <input type="text" id="f-backend-manual" placeholder="host:port" style="display:none;flex:1;" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="f-port">Port</label>
-        <input type="number" id="f-port" min="1" max="65535" oninput="onPortInput()" placeholder="25565">
-        <div id="port-status-bar" style="display:none;"></div>
+      <div class="form-group route-modal-field">
+        <label for="f-hostname">Hostname</label>
+        <input type="text" id="f-hostname" placeholder="play.example.com" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+        <div class="form-hint">The Minecraft client connects to this hostname.</div>
       </div>
 
       <div class="form-group">
@@ -591,7 +581,14 @@ window.MC_UI_CONFIG = {
         </label>
       </div>
 
-      <!-- Live validation -->
+      <div class="form-group route-modal-field">
+        <label for="f-backend">Backend Server</label>
+        <input type="text" id="f-backend" placeholder="host:port (e.g. 192.168.1.50:25566)" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+        <div class="form-hint">The Minecraft server address that traffic will be forwarded to.</div>
+        <div class="crafty-picker" id="crafty-picker"></div>
+      </div>
+
+      <!-- Compact inline validation -->
       <div class="validation-container">
         <div class="validation-title">Live Validation</div>
         <div class="validation-item val-neutral" id="val-format">
@@ -610,34 +607,9 @@ window.MC_UI_CONFIG = {
 
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" onclick="closeRouteModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="route-submit">Create</button>
+        <button type="submit" class="btn btn-primary" id="route-submit">Create Route</button>
       </div>
     </form>
-  </div>
-</div>
-
-<!-- Route Confirm Modal -->
-<div class="modal-overlay" id="route-confirm-modal" role="dialog" aria-modal="true">
-  <div class="modal modal-sm">
-    <div class="modal-header">
-      <h2 id="confirm-modal-title">Confirm Route</h2>
-      <button class="modal-close" onclick="closeRouteConfirmModal()" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">Please review the details and validation results before saving.</p>
-    <div class="confirm-summary">
-      <div class="confirm-row"><span class="label">Type</span><span class="val" id="confirm-type">—</span></div>
-      <div class="confirm-row"><span class="label">Hostname</span><span class="val" id="confirm-hostname">—</span></div>
-      <div class="confirm-row"><span class="label">Backend</span><span class="val" id="confirm-backend">—</span></div>
-    </div>
-    <div class="issue-box" id="confirm-issues" style="display:none;"></div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeRouteConfirmModal()">Back</button>
-      <button type="button" class="btn btn-primary" id="confirm-submit-btn" onclick="submitRouteFinal()">Confirm &amp; Save</button>
-    </div>
   </div>
 </div>
 
@@ -691,39 +663,6 @@ window.MC_UI_CONFIG = {
       <button type="button" class="btn btn-ghost" onclick="closeModal('cf-create-modal')">Cancel</button>
       <button type="button" class="btn btn-blue" onclick="createCfRecord()">Create Record</button>
     </div>
-  </div>
-</div>
-
-<!-- Crafty Port Modal -->
-<div class="modal-overlay" id="crafty-port-modal" role="dialog" aria-modal="true">
-  <div class="modal modal-sm">
-    <div class="modal-header">
-      <h2>Change Server Port</h2>
-      <button class="modal-close" onclick="closeModal('crafty-port-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-    </div>
-    <form id="crafty-port-form" method="post">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5;">
-        Changing port for <strong id="cp-server-name" style="color:#fff;"></strong>. This updates the Crafty configuration directly.
-      </p>
-      <div class="form-group">
-        <label for="cp-port">New Port</label>
-        <input type="number" id="cp-port" name="port" required min="1024" max="65535">
-      </div>
-      <div class="form-group">
-        <label class="checkbox-row">
-          <input type="checkbox" name="restart" value="true" checked>
-          Restart server immediately
-        </label>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="closeModal('crafty-port-modal')">Cancel</button>
-        <button type="submit" class="btn btn-primary">Change Port</button>
-      </div>
-    </form>
   </div>
 </div>
 
