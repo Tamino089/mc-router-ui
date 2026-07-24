@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>MC-Router-UI</Name>
+  <Repository>mc-router-ui:latest</Repository>
+  <Registry></Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support></Support>
+  <Project></Project>
+  <Overview>Web UI for mc-router: Minecraft Reverse Proxy with Cloudflare DDNS, Crafty integration, and user management. Routes Minecraft connections to the correct backend server based on the hostname. NOTE: The image must be built locally before first use (see README).</Overview>
+  <Category>GameServers: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL></TemplateURL>
+  <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/docs/mc-router.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <!-- ═══════════════════ PORTS ═══════════════════ -->
+  <Config Name="Minecraft Port" Target="25565" Default="25565" Mode="tcp"
+          Description="Incoming Minecraft connections (SNI routing). This port must be accessible via port forwarding or DynDNS."
+          Type="Port" Display="always" Required="true" Mask="false">25565</Config>
+
+  <Config Name="Web UI Port" Target="8000" Default="8090" Mode="tcp"
+          Description="Port for the web management interface (internally always 8000). Best operated behind Nginx Proxy Manager or a Cloudflare Tunnel."
+          Type="Port" Display="always" Required="true" Mask="false">8090</Config>
+
+  <!-- ═══════════════════ VOLUME ═══════════════════ -->
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/mc-router-ui" Mode="rw"
+          Description="Storage location for the SQLite database and all persistent data. This path is preserved during updates."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mc-router-ui</Config>
+
+  <!-- ═══════════════════ ADMIN ═══════════════════ -->
+  <Config Name="Admin Username" Target="ADMIN_USERNAME" Default="admin"
+          Description="Username of the admin account. Automatically created on first start. Changes only take effect after a restart."
+          Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="changeme"
+          Description="Password of the admin account. PLEASE CHANGE THIS! It is compared with the stored hash on every start and updated if necessary."
+          Type="Variable" Display="always" Required="true" Mask="true">changeme</Config>
+
+  <Config Name="Secret Key" Target="SECRET_KEY" Default=""
+          Description="Secret key for session cookies. Leave blank = automatically generated and permanently stored in the DB (recommended). Only set if you want to force a specific value."
+          Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <!-- ═══════════════════ MINECRAFT ═══════════════════ -->
+  <Config Name="Minecraft Ingress Port (Internal)" Target="MC_PORT" Default="25565"
+          Description="Internal Minecraft port that mc-router listens on. Must match the mapped container port."
+          Type="Variable" Display="advanced" Required="false" Mask="false">25565</Config>
+
+  <Config Name="mc-router API Port (Internal)" Target="API_PORT" Default="8080"
+          Description="Internal REST API port of mc-router. Used only internally — do not map externally!"
+          Type="Variable" Display="advanced" Required="false" Mask="false">8080</Config>
+
+  <!-- ═══════════════════ CLOUDFLARE DDNS ═══════════════════ -->
+  <Config Name="Cloudflare API Token" Target="CLOUDFLARE_API_TOKEN" Default=""
+          Description="[Optional] Cloudflare API token with DNS:Edit permissions. If set, DNS A-records are automatically created when adding a route and updated upon IP changes."
+          Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Cloudflare Zone ID" Target="CLOUDFLARE_ZONE_ID" Default=""
+          Description="[Optional] Cloudflare Zone ID (from the Cloudflare Dashboard). Specify either Zone ID OR Zone Name."
+          Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <Config Name="Cloudflare Zone Name" Target="CLOUDFLARE_ZONE_NAME" Default=""
+          Description="[Optional] Cloudflare Zone Name (e.g. my-domain.com). Alternative to Zone ID — resolved automatically."
+          Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <Config Name="DDNS Check Interval (Seconds)" Target="DDNS_INTERVAL_SECONDS" Default="300"
+          Description="[Optional] How often the public IP is checked for changes (in seconds). Default: 300 (5 minutes)."
+          Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
+
+  <!-- ═══════════════════ CRAFTY INTEGRATION ═══════════════════ -->
+  <Config Name="Crafty URL" Target="CRAFTY_URL" Default=""
+          Description="[Optional] URL of your Crafty controller, e.g. https://crafty:8443. Must be in the same Docker network or reachable. Overrides the setting saved in the Web UI upon startup."
+          Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <Config Name="Crafty API Key" Target="CRAFTY_API_KEY" Default=""
+          Description="[Optional] API Key for your Crafty controller. Required if you want to edit server ports directly in Crafty."
+          Type="Variable" Display="always" Required="false" Mask="true"></Config>
+</Container>

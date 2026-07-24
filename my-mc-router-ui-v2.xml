@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>MC-Router-UI</Name>
+  <Repository>mc-router-ui:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/itzg/mc-router</Project>
+  <Overview>Minecraft Reverse-Proxy Web-UI mit Cloudflare DDNS und Crafty Controller Integration. mc-router und die Web-UI laufen zusammen in einem einzigen Docker-Container über Supervisor.</Overview>
+  <Category>Network:Proxy Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8090]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Minecraft Reverse-Proxy Web-UI mit Cloudflare DDNS und Crafty Controller Integration.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>25565</HostPort>
+        <ContainerPort>25565</ContainerPort>
+        <Protocol>tcp</Protocol>
+        <Name>Minecraft Port</Name>
+        <Mode/>
+      </Port>
+      <Port>
+        <HostPort>8090</HostPort>
+        <ContainerPort>8000</ContainerPort>
+        <Protocol>tcp</Protocol>
+        <Name>Web UI Port</Name>
+        <Mode/>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/mc-router-ui</HostDir>
+      <ContainerDir>/data</ContainerDir>
+      <Mode>rw</Mode>
+      <Name>Data Directory</Name>
+      <Type>Path</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+    </Volume>
+    <Volume>
+      <HostDir>/mnt/user/appdata/crafty/servers</HostDir>
+      <ContainerDir>/crafty/servers</ContainerDir>
+      <Mode>rw</Mode>
+      <Name>Crafty Servers Directory Mount</Name>
+      <Type>Path</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value>25565</Value>
+      <Name>MC_PORT</Name>
+      <Reference>MC_PORT</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+      <Description>Minecraft-Eingangsport (interner Proxy-Port)</Description>
+    </Variable>
+    <Variable>
+      <Value>8080</Value>
+      <Name>API_PORT</Name>
+      <Reference>API_PORT</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+      <Description>REST-API Port für mc-router (intern)</Description>
+    </Variable>
+    <Variable>
+      <Value>http://localhost:8080</Value>
+      <Name>MC_ROUTER_API</Name>
+      <Reference>MC_ROUTER_API</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+      <Description>mc-router API Endpoint</Description>
+    </Variable>
+    <Variable>
+      <Value>admin</Value>
+      <Name>ADMIN_USERNAME</Name>
+      <Reference>ADMIN_USERNAME</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+      <Description>Admin-Benutzername</Description>
+    </Variable>
+    <Variable>
+      <Value>changeme</Value>
+      <Name>ADMIN_PASSWORD</Name>
+      <Reference>ADMIN_PASSWORD</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>true</Required>
+      <Mask>false</Mask>
+      <Description>Admin-Passwort (sofort nach erstem Login ändern!)</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>SECRET_KEY</Name>
+      <Reference>SECRET_KEY</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>true</Mask>
+      <Description>Optionaler geheimer Schlüssel für Sessions. Wenn leer, wird er automatisch generiert und persistiert.</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>CLOUDFLARE_API_TOKEN</Name>
+      <Reference>CLOUDFLARE_API_TOKEN</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>true</Mask>
+      <Description>Cloudflare API Token für DNS-Einträge und DDNS</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>CLOUDFLARE_ZONE_ID</Name>
+      <Reference>CLOUDFLARE_ZONE_ID</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+      <Description>Cloudflare Zone ID</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>CLOUDFLARE_ZONE_NAME</Name>
+      <Reference>CLOUDFLARE_ZONE_NAME</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+      <Description>Cloudflare Domainname (z.B. meinedomain.de), falls Zone ID nicht angegeben ist</Description>
+    </Variable>
+    <Variable>
+      <Value>300</Value>
+      <Name>DDNS_INTERVAL_SECONDS</Name>
+      <Reference>DDNS_INTERVAL_SECONDS</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+      <Description>Intervall in Sekunden für DDNS Updates</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>CRAFTY_URL</Name>
+      <Reference>CRAFTY_URL</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+      <Description>URL zu Crafty Controller (z.B. https://192.168.1.50:8443)</Description>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>CRAFTY_API_KEY</Name>
+      <Reference>CRAFTY_API_KEY</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>true</Mask>
+      <Description>API Token für die Crafty Controller Integration</Description>
+    </Variable>
+    <Variable>
+      <Value>/crafty/servers</Value>
+      <Name>CRAFTY_SERVERS_DIR</Name>
+      <Reference>CRAFTY_SERVERS_DIR</Reference>
+      <Connection>mc-router-ui</Connection>
+      <Type>Env</Type>
+      <Display>always</Display>
+      <Required>false</Required>
+      <Mask>false</Mask>
+      <Description>Verzeichnis im Container, unter dem die server.properties der Crafty-Server liegen (gemountet)</Description>
+    </Variable>
+  </Environment>
+</Container>
