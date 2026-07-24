@@ -2,6 +2,7 @@
 CRUD operations for Minecraft routes.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Form, Request, HTTPException
@@ -11,10 +12,33 @@ from app.core.security import current_user
 from app.db.database import get_db
 from app.db.schema import user_has_perm
 from app.services import cloudflare, mc_router
+from app.services.health import tcp_check
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _trigger_health_check(route_id: int, backend: str):
+    """Run an immediate TCP health check for a single route and store the result."""
+    try:
+        parts = backend.rsplit(":", 1)
+        host = parts[0]
+        port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 25565
+        healthy, latency = await asyncio.to_thread(tcp_check, host, port, 3.0)
+        with get_db() as con:
+            con.execute(
+                """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at)
+                   VALUES (?, ?, ?, datetime('now'))
+                   ON CONFLICT(route_id) DO UPDATE SET
+                       healthy=excluded.healthy,
+                       latency_ms=excluded.latency_ms,
+                       checked_at=excluded.checked_at""",
+                (route_id, int(healthy), latency if healthy else None),
+            )
+            con.commit()
+    except Exception:
+        logger.warning("Immediate health check failed for route %s", route_id, exc_info=True)
 
 
 @router.post("/routes/add")
@@ -40,6 +64,13 @@ async def add_route(
         return RedirectResponse(url="/?error=Hostname is required", status_code=303)
 
     try:
+        # 1. Validate domain against Cloudflare zone (if configured)
+        if not is_def:
+            valid, v_err = await cloudflare.validate_domain(hostname, False)
+            if not valid:
+                return RedirectResponse(url=f"/?error={v_err}", status_code=303)
+
+        # 2. Insert into DB
         with get_db() as con:
             existing = con.execute(
                 "SELECT id FROM routes WHERE hostname=?", (hostname,)
@@ -47,13 +78,14 @@ async def add_route(
             if existing:
                 return RedirectResponse(url="/?error=Route already exists", status_code=303)
 
-            con.execute(
+            cur = con.execute(
                 "INSERT INTO routes (hostname, backend, is_default, owner_id) VALUES (?, ?, ?, ?)",
                 (hostname, backend, int(is_def), user["id"]),
             )
+            route_id = cur.lastrowid
             con.commit()
 
-        # Sync to router
+        # 3. Push to mc-router
         if is_def:
             err = await mc_router.push_default(backend)
         else:
@@ -62,12 +94,19 @@ async def add_route(
         if err:
             return RedirectResponse(url=f"/?error=Route saved but mc-router failed: {err}", status_code=303)
 
-        # Sync DNS
-        cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
-        if cf_err:
-            return RedirectResponse(url=f"/?success=Route added&error=Cloudflare DNS failed: {cf_err}", status_code=303)
+        # 4. Sync DNS — surface result to user
+        dns_msg = ""
+        if not is_def:
+            cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
+            if cf_err:
+                dns_msg = f" (DNS: {cf_err})"
+            else:
+                dns_msg = " (DNS record created/updated)"
 
-        return RedirectResponse(url="/?success=Route added successfully", status_code=303)
+        # 5. Trigger immediate health check so the UI shows status right away
+        await _trigger_health_check(route_id, backend)
+
+        return RedirectResponse(url=f"/?success=Route added successfully{dns_msg}", status_code=303)
 
     except Exception as e:
         logger.exception("Error adding route")
@@ -108,16 +147,7 @@ async def edit_route(
             if existing:
                 return RedirectResponse(url="/?error=Hostname already exists", status_code=303)
 
-        con.execute(
-            "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
-            (hostname, backend, int(is_def), route_id),
-        )
-        con.commit()
-
-    # Sync to router
-    if not old_is_default:
-        await mc_router.delete_route(old_hostname)
-
+    # Push NEW route to mc-router BEFORE committing DB change
     if is_def:
         err = await mc_router.push_default(backend)
     else:
@@ -126,6 +156,18 @@ async def edit_route(
     if err:
         return RedirectResponse(url=f"/?error=Route updated but sync failed: {err}", status_code=303)
 
+    # Delete OLD route from mc-router (only if hostname changed or was non-default)
+    if not old_is_default and old_hostname != hostname:
+        await mc_router.delete_route(old_hostname)
+
+    # Now commit DB change
+    with get_db() as con:
+        con.execute(
+            "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
+            (hostname, backend, int(is_def), route_id),
+        )
+        con.commit()
+
     # Sync DNS
     cf_err = None
     if old_hostname != hostname and not old_is_default:
@@ -133,10 +175,16 @@ async def edit_route(
     if not is_def:
         cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
 
-    if cf_err:
-        return RedirectResponse(url=f"/?success=Route updated&error=Cloudflare error: {cf_err}", status_code=303)
+    # Trigger immediate health check
+    await _trigger_health_check(route_id, backend)
 
-    return RedirectResponse(url="/?success=Route updated successfully", status_code=303)
+    dns_msg = ""
+    if not is_def and not cf_err:
+        dns_msg = " (DNS synced)"
+    elif cf_err:
+        dns_msg = f" (DNS: {cf_err})"
+
+    return RedirectResponse(url=f"/?success=Route updated successfully{dns_msg}", status_code=303)
 
 
 @router.post("/routes/delete/{route_id}")
@@ -159,6 +207,7 @@ async def delete_route(request: Request, route_id: int):
         is_default = bool(r_row["is_default"])
 
         con.execute("DELETE FROM routes WHERE id=?", (route_id,))
+        con.execute("DELETE FROM health_checks WHERE route_id=?", (route_id,))
         con.commit()
 
     # Sync to router

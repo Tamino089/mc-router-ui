@@ -504,31 +504,34 @@ async function loadCfRecords() {
 
 function openCfCreateModal() {
   document.getElementById('cf-new-hostname').value = '';
-  document.getElementById('cf-new-ip').value = '';
   openModal('cf-create-modal');
 }
 
 async function createCfRecord() {
   const hostname = document.getElementById('cf-new-hostname').value.trim();
-  const ip       = document.getElementById('cf-new-ip').value.trim();
-  if (!hostname || !ip) { showToast('Hostname and IP are required', 'error'); return; }
+  if (!hostname) { showToast('Hostname is required', 'error'); return; }
+
+  const btn = document.querySelector('#cf-create-modal .btn-blue');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
 
   try {
     const r = await fetch('/api/cf/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostname, ip })
+      body: JSON.stringify({ hostname, ip: '' })
     });
     const d = await r.json();
     if (d.success) {
       closeModal('cf-create-modal');
-      showToast(`A-record for ${hostname} created`, 'success');
+      showToast(`A-record for ${hostname} created (auto-detected IP)`, 'success');
       loadCfRecords();
     } else {
       showToast(d.error || 'Failed to create record', 'error');
     }
   } catch {
     showToast('Network error', 'error');
+  } finally {
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
   }
 }
 

@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/css/main.css?v=3">
+<link rel="stylesheet" href="/static/css/main.css?v=4">
 
 <!-- Theme: apply before paint to avoid flash -->
 <script>
@@ -654,11 +654,10 @@ window.MC_UI_CONFIG = {
       <label for="cf-new-hostname">Hostname</label>
       <input type="text" id="cf-new-hostname" placeholder="play.yourdomain.com">
     </div>
-    <div class="form-group">
-      <label for="cf-new-ip">IP Address</label>
-      <input type="text" id="cf-new-ip" placeholder="Auto-detected if blank…">
-    </div>
-    <p class="form-hint" style="margin-top:-10px;margin-bottom:18px;">The A-record is created as DNS-only (grey cloud / unproxied).</p>
+    <p class="form-hint" style="margin-bottom:18px;">
+      The A-record will point to your server's <strong>auto-detected public IP</strong>.
+      Created as DNS-only (grey cloud / unproxied). The DDNS loop keeps it in sync when your IP changes.
+    </p>
     <div class="modal-footer">
       <button type="button" class="btn btn-ghost" onclick="closeModal('cf-create-modal')">Cancel</button>
       <button type="button" class="btn btn-blue" onclick="createCfRecord()">Create Record</button>
@@ -830,6 +829,6 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Dashboard JS -->
-<script src="/static/js/dashboard.js?v=3"></script>
+<script src="/static/js/dashboard.js?v=4"></script>
 </body>
 </html>

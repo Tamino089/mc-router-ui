@@ -15,7 +15,7 @@ from app.db.database import get_db
 logger = logging.getLogger(__name__)
 
 
-def tcp_check(host: str, port: int, timeout: float = 2.0) -> tuple[bool, float]:
+def tcp_check(host: str, port: int, timeout: float = 3.0) -> tuple[bool, float]:
     """
     TCP connectivity check. Returns (healthy, latency_ms).
     Latency is -1 if unreachable.
@@ -39,7 +39,7 @@ async def check_all_routes():
 
     loop = asyncio.get_running_loop()
 
-    for route in routes:
+    async def check_one(route):
         parts = route["backend"].rsplit(":", 1)
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 25565
@@ -49,7 +49,6 @@ async def check_all_routes():
         )
 
         with get_db() as con:
-            # Upsert current health state
             con.execute(
                 """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at)
                    VALUES (?, ?, ?, datetime('now'))
@@ -59,13 +58,14 @@ async def check_all_routes():
                        checked_at=excluded.checked_at""",
                 (route["id"], int(healthy), latency if healthy else None),
             )
-            # Append to history
             con.execute(
                 """INSERT INTO health_history (route_id, healthy, latency_ms, checked_at)
                    VALUES (?, ?, ?, datetime('now'))""",
                 (route["id"], int(healthy), latency if healthy else None),
             )
             con.commit()
+
+    await asyncio.gather(*[check_one(r) for r in routes], return_exceptions=True)
 
 
 async def prune_old_history():
