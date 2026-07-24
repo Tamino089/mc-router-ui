@@ -139,12 +139,14 @@ async def validate_route_live(
         if len(parts) != 2 or not parts[1].isdigit():
             res["backend_reachable"] = {"status": "error", "message": "Backend must be in format host:port."}
         else:
+            import asyncio
             from app.services.health import tcp_check
             host, port = parts[0], int(parts[1])
-            healthy, _ = tcp_check(host, port, timeout=1.0)
+            # Run blocking TCP check in a thread so we don't stall the event loop
+            healthy, _ = await asyncio.to_thread(tcp_check, host, port, 3.0)
             if healthy:
                 res["backend_reachable"] = {"status": "success", "message": "Backend is reachable via TCP."}
             else:
-                res["backend_reachable"] = {"status": "warning", "message": "Backend is unreachable right now."}
+                res["backend_reachable"] = {"status": "warning", "message": "Backend is unreachable right now (TCP connect failed). You can still save — the route will retry automatically."}
 
     return res

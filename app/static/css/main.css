@@ -665,12 +665,18 @@ main {
 
 /* Checkbox row */
 .checkbox-row {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: center; gap: 10px;
   cursor: pointer; font-size: 13px; color: var(--text-2);
   user-select: none;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  transition: border-color 0.15s, background 0.15s;
 }
+.checkbox-row:hover { border-color: var(--border-hover); }
 .checkbox-row input[type=checkbox] {
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   accent-color: var(--accent);
   cursor: pointer; flex-shrink: 0;
 }
