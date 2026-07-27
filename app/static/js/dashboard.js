@@ -294,12 +294,12 @@ function triggerValidation() {
   validationTimer = setTimeout(performValidation, 500);
 }
 
-// Route form submit — direct submit with validation warning
+// Route form submit — fetch with JSON body
 document.addEventListener('DOMContentLoaded', () => {
   const routeForm = document.getElementById('route-form');
   if (!routeForm) return;
 
-  routeForm.addEventListener('submit', e => {
+  routeForm.addEventListener('submit', async e => {
     e.preventDefault();
 
     const hostname  = getEffectiveHostname();
@@ -322,33 +322,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const routeId = document.getElementById('f-route-id').value;
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = routeId ? `/routes/edit/${routeId}` : '/routes/add';
 
-    const fields = {
-      hostname: hostname,
-      backend:  backend,
-      is_default: isDefault ? 'true' : ''
-    };
+    const submitBtn = document.getElementById('route-submit');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
 
-    Object.entries(fields).forEach(([k, v]) => {
-      const input = document.createElement('input');
-      input.type = 'hidden'; input.name = k; input.value = v;
-      form.appendChild(input);
-    });
+    try {
+      const url = routeId ? `/routes/edit/${routeId}` : '/routes/add';
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hostname: hostname,
+          backend: backend,
+          is_default: isDefault ? true : false
+        })
+      });
 
-    document.body.appendChild(form);
-    form.submit();
+      const d = await r.json();
+      if (d.success) {
+        showToast(d.message || 'Route saved successfully', 'success');
+        closeRouteModal();
+        setTimeout(() => window.location.reload(), 800);
+      } else {
+        showToast(d.error || 'Failed to save route', 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
+      }
+    } catch (err) {
+      showToast('Network error: ' + err.message, 'error');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
+    }
   });
 });
 
 // ── Route delete confirm ─────────────────────────────────────────────────────
+let deleteRouteId = null;
+
 function confirmDeleteRoute(id, hostname) {
+  deleteRouteId = id;
   document.getElementById('delete-route-text').textContent =
     `Are you sure you want to delete the route for "${hostname === '__default__' ? '* (default)' : hostname}"? This action cannot be undone.`;
-  document.getElementById('delete-route-form').action = `/routes/delete/${id}`;
   openModal('delete-route-modal');
+}
+
+async function submitDeleteRoute() {
+  if (!deleteRouteId) return;
+  const btn = document.getElementById('delete-route-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
+
+  try {
+    const r = await fetch(`/routes/delete/${deleteRouteId}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('delete-route-modal');
+      showToast(d.message || 'Route deleted', 'success');
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      showToast(d.error || 'Delete failed', 'error');
+      btn.disabled = false;
+      btn.innerHTML = 'Delete Route';
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = 'Delete Route';
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -390,8 +431,6 @@ async function refreshHealth() {
           
           if (sparkline && h_data.success && h_data.history) {
              sparkline.innerHTML = h_data.history.map(pt => {
-                // simple height scaling based on latency (lower latency = higher bar for goodness, or higher bar = higher latency?)
-                // actually, for latency, shorter bar = faster (better). So let's make max 100ms = 100% height.
                 const latency = pt.latency_ms || 100;
                 const h = pt.healthy ? Math.max(10, Math.min(100, (latency / 100) * 100)) : 100;
                 const color = pt.healthy ? 'var(--green)' : 'var(--danger)';
@@ -400,7 +439,9 @@ async function refreshHealth() {
              }).join('');
           }
         }
-      } catch {}
+      } catch {
+        // Individual row health refresh failed - skip silently
+      }
     }));
 
     // Refresh connections
@@ -420,7 +461,9 @@ async function refreshHealth() {
     const totalEl = document.getElementById('total-conns');
     if (totalEl) totalEl.textContent = total;
 
-  } catch {}
+  } catch {
+    showToast('Failed to refresh health status', 'error');
+  }
 
   if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
 }
@@ -442,7 +485,13 @@ async function checkRouterStatus() {
       text.textContent = 'mc-router offline';
       text.style.color = 'var(--danger)';
     }
-  } catch {}
+  } catch {
+    const text = document.getElementById('router-status-text');
+    if (text) {
+      text.textContent = 'mc-router unreachable';
+      text.style.color = 'var(--danger)';
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -588,7 +637,6 @@ async function loadCraftyServers() {
     tbody.innerHTML = d.servers.map(s => {
       const cpu = Math.min(Math.round(s.cpu || 0), 100);
       const ram = Math.min(Math.round(s.mem_percent || 0), 100);
-      // Port health indicator
       const portHealth = s.running
         ? (s.port_reachable
             ? `<span class="dot dot-green" style="display:inline-block;margin-left:6px;" title="Port reachable"></span>`
@@ -768,7 +816,6 @@ async function loadUsersList() {
 
 function openAddUserModal() {
   document.getElementById('user-modal-title').textContent = 'Add User';
-  document.getElementById('user-form').action = '/users/add';
   document.getElementById('u-username').value = '';
   document.getElementById('u-password').value = '';
   document.getElementById('u-role').value = 'user';
@@ -776,12 +823,12 @@ function openAddUserModal() {
   document.getElementById('u-password').required = true;
   document.getElementById('u-password-hint').textContent = 'Choose a secure password (min. 6 characters).';
   document.getElementById('user-modal-submit').textContent = 'Create User';
+  window._editUserId = null;
   openModal('user-modal');
 }
 
 function openEditUserModal(id, username, role) {
   document.getElementById('user-modal-title').textContent = 'Edit User';
-  document.getElementById('user-form').action = `/users/edit/${id}`;
   document.getElementById('u-username').value = username;
   document.getElementById('u-password').value = '';
   document.getElementById('u-role').value = role;
@@ -789,14 +836,77 @@ function openEditUserModal(id, username, role) {
   document.getElementById('u-password').required = false;
   document.getElementById('u-password-hint').textContent = 'Leave blank to keep the current password.';
   document.getElementById('user-modal-submit').textContent = 'Save Changes';
+  window._editUserId = id;
   openModal('user-modal');
+}
+
+async function submitUserForm() {
+  const id = window._editUserId;
+  const username = document.getElementById('u-username').value.trim();
+  const password = document.getElementById('u-password').value;
+  const role = document.getElementById('u-role').value;
+
+  if (!username) { showToast('Username is required', 'error'); return; }
+  if (!id && !password) { showToast('Password is required', 'error'); return; }
+  if (password && password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+
+  const btn = document.getElementById('user-modal-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
+
+  try {
+    const url = id ? `/users/edit/${id}` : '/users/add';
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role })
+    });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('user-modal');
+      showToast(d.message || 'User saved', 'success');
+      loadUsersList();
+    } else {
+      showToast(d.error || 'Failed to save user', 'error');
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = id ? 'Save Changes' : 'Create User';
+  }
 }
 
 function confirmDeleteUser(id, username) {
   document.getElementById('delete-user-text').textContent =
     `Are you sure you want to delete the user "${username}"? All their routes will remain but become ownerless.`;
-  document.getElementById('delete-user-form').action = `/users/delete/${id}`;
   openModal('delete-user-modal');
+  window._deleteUserId = id;
+}
+
+async function submitDeleteUser() {
+  const id = window._deleteUserId;
+  if (!id) return;
+  const btn = document.getElementById('delete-user-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
+  try {
+    const r = await fetch(`/users/delete/${id}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('delete-user-modal');
+      showToast(d.message || 'User deleted', 'success');
+      loadUsersList();
+    } else {
+      showToast(d.error || 'Delete failed', 'error');
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Delete User';
+    window._deleteUserId = null;
+  }
 }
 
 // ── Permission editor ─────────────────────────────────────────────────────────

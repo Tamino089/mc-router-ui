@@ -5,8 +5,8 @@ CRUD operations for Minecraft routes.
 import asyncio
 import logging
 
-from fastapi import APIRouter, Form, Request, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from app.core.security import current_user
 from app.db.database import get_db
@@ -17,6 +17,21 @@ from app.services.health import tcp_check
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _get_form_or_json(request: Request) -> dict:
+    """Extract form data from either JSON body or form-encoded POST."""
+    content_type = request.headers.get("content-type", "")
+    if "json" in content_type:
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+    try:
+        form = await request.form()
+        return {k: v for k, v in form.items()}
+    except Exception:
+        return {}
 
 
 async def _trigger_health_check(route_id: int, backend: str):
@@ -42,41 +57,35 @@ async def _trigger_health_check(route_id: int, backend: str):
 
 
 @router.post("/routes/add")
-async def add_route(
-    request: Request,
-    hostname: str = Form(...),
-    backend: str = Form(...),
-    is_default: str = Form(None),
-):
+async def add_route(request: Request):
     user = current_user(request)
     if not user:
-        return RedirectResponse(url="/login", status_code=303)
+        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
     if not user_has_perm(user, "create_route"):
-        return RedirectResponse(url="/?error=Permission denied", status_code=303)
+        return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
-    hostname = hostname.strip().lower()
-    backend = backend.strip()
-    is_def = bool(is_default)
+    data = await _get_form_or_json(request)
+    hostname = data.get("hostname", "").strip().lower()
+    backend = data.get("backend", "").strip()
+    is_def = bool(data.get("is_default", False))
 
     if not backend:
-        return RedirectResponse(url="/?error=Backend is required", status_code=303)
+        return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
     if not hostname and not is_def:
-        return RedirectResponse(url="/?error=Hostname is required", status_code=303)
+        return JSONResponse({"success": False, "error": "Hostname is required"}, status_code=400)
 
     try:
-        # 1. Validate domain against Cloudflare zone (if configured)
         if not is_def:
             valid, v_err = await cloudflare.validate_domain(hostname, False)
             if not valid:
-                return RedirectResponse(url=f"/?error={v_err}", status_code=303)
+                return JSONResponse({"success": False, "error": v_err}, status_code=400)
 
-        # 2. Insert into DB
         with get_db() as con:
             existing = con.execute(
                 "SELECT id FROM routes WHERE hostname=?", (hostname,)
             ).fetchone()
             if existing:
-                return RedirectResponse(url="/?error=Route already exists", status_code=303)
+                return JSONResponse({"success": False, "error": "Route already exists"}, status_code=409)
 
             cur = con.execute(
                 "INSERT INTO routes (hostname, backend, is_default, owner_id) VALUES (?, ?, ?, ?)",
@@ -85,16 +94,14 @@ async def add_route(
             route_id = cur.lastrowid
             con.commit()
 
-        # 3. Push to mc-router
         if is_def:
             err = await mc_router.push_default(backend)
         else:
             err = await mc_router.push_route(hostname, backend)
 
         if err:
-            return RedirectResponse(url=f"/?error=Route saved but mc-router failed: {err}", status_code=303)
+            return JSONResponse({"success": False, "error": f"Route saved but mc-router sync failed: {err}"}, status_code=500)
 
-        # 4. Sync DNS — surface result to user
         dns_msg = ""
         if not is_def:
             cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
@@ -103,41 +110,35 @@ async def add_route(
             else:
                 dns_msg = " (DNS record created/updated)"
 
-        # 5. Trigger immediate health check so the UI shows status right away
         await _trigger_health_check(route_id, backend)
 
-        return RedirectResponse(url=f"/?success=Route added successfully{dns_msg}", status_code=303)
+        return JSONResponse({"success": True, "message": f"Route added successfully{dns_msg}"})
 
     except Exception as e:
         logger.exception("Error adding route")
-        return RedirectResponse(url=f"/?error=Error adding route: {e}", status_code=303)
+        return JSONResponse({"success": False, "error": f"Error adding route: {e}"}, status_code=500)
 
 
 @router.post("/routes/edit/{route_id}")
-async def edit_route(
-    request: Request,
-    route_id: int,
-    hostname: str = Form(...),
-    backend: str = Form(...),
-    is_default: str = Form(None),
-):
+async def edit_route(request: Request, route_id: int):
     user = current_user(request)
     if not user:
-        return RedirectResponse(url="/login", status_code=303)
+        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
 
-    hostname = hostname.strip().lower()
-    backend = backend.strip()
-    is_def = bool(is_default)
+    data = await _get_form_or_json(request)
+    hostname = data.get("hostname", "").strip().lower()
+    backend = data.get("backend", "").strip()
+    is_def = bool(data.get("is_default", False))
 
     with get_db() as con:
         r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
         if not r_row:
-            return RedirectResponse(url="/?error=Route not found", status_code=303)
+            return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
 
         if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
-            return RedirectResponse(url="/?error=Permission denied", status_code=303)
+            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
         if r_row["owner_id"] == user["id"] and not user_has_perm(user, "edit_own_route"):
-            return RedirectResponse(url="/?error=Permission denied", status_code=303)
+            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
         old_hostname = r_row["hostname"]
         old_is_default = bool(r_row["is_default"])
@@ -145,22 +146,19 @@ async def edit_route(
         if hostname != old_hostname:
             existing = con.execute("SELECT id FROM routes WHERE hostname=?", (hostname,)).fetchone()
             if existing:
-                return RedirectResponse(url="/?error=Hostname already exists", status_code=303)
+                return JSONResponse({"success": False, "error": "Hostname already exists"}, status_code=409)
 
-    # Push NEW route to mc-router BEFORE committing DB change
     if is_def:
         err = await mc_router.push_default(backend)
     else:
         err = await mc_router.push_route(hostname, backend)
 
     if err:
-        return RedirectResponse(url=f"/?error=Route updated but sync failed: {err}", status_code=303)
+        return JSONResponse({"success": False, "error": f"Route updated but sync failed: {err}"}, status_code=500)
 
-    # Delete OLD route from mc-router (only if hostname changed or was non-default)
     if not old_is_default and old_hostname != hostname:
         await mc_router.delete_route(old_hostname)
 
-    # Now commit DB change
     with get_db() as con:
         con.execute(
             "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
@@ -168,14 +166,12 @@ async def edit_route(
         )
         con.commit()
 
-    # Sync DNS
     cf_err = None
     if old_hostname != hostname and not old_is_default:
         await cloudflare.cf_delete_record_by_hostname(old_hostname)
     if not is_def:
         cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
 
-    # Trigger immediate health check
     await _trigger_health_check(route_id, backend)
 
     dns_msg = ""
@@ -184,24 +180,24 @@ async def edit_route(
     elif cf_err:
         dns_msg = f" (DNS: {cf_err})"
 
-    return RedirectResponse(url=f"/?success=Route updated successfully{dns_msg}", status_code=303)
+    return JSONResponse({"success": True, "message": f"Route updated successfully{dns_msg}"})
 
 
 @router.post("/routes/delete/{route_id}")
 async def delete_route(request: Request, route_id: int):
     user = current_user(request)
     if not user:
-        return RedirectResponse(url="/login", status_code=303)
+        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
 
     with get_db() as con:
         r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
         if not r_row:
-            return RedirectResponse(url="/?error=Route not found", status_code=303)
+            return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
 
         if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
-            return RedirectResponse(url="/?error=Permission denied", status_code=303)
+            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
         if r_row["owner_id"] == user["id"] and not user_has_perm(user, "delete_own_route"):
-            return RedirectResponse(url="/?error=Permission denied", status_code=303)
+            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
         hostname = r_row["hostname"]
         is_default = bool(r_row["is_default"])
@@ -210,16 +206,14 @@ async def delete_route(request: Request, route_id: int):
         con.execute("DELETE FROM health_checks WHERE route_id=?", (route_id,))
         con.commit()
 
-    # Sync to router
     if not is_default:
         err = await mc_router.delete_route(hostname)
         if err:
             logger.warning("Failed to delete route on router: %s", err)
 
-    # Sync DNS
     if not is_default:
         cf_err = await cloudflare.cf_delete_record_by_hostname(hostname)
         if cf_err:
             logger.warning("Failed to delete DNS record: %s", cf_err)
 
-    return RedirectResponse(url="/?success=Route deleted successfully", status_code=303)
+    return JSONResponse({"success": True, "message": "Route deleted successfully"})

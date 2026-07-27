@@ -1,27 +1,21 @@
 """
-Lightweight CSRF protection via same-origin verification.
+Lightweight CSRF protection via same-origin verification + security headers.
 
-This is a defense against Cross-Site Request Forgery that does NOT require
-modifying existing forms or adding tokens. For every state-changing request
-(POST, PUT, PATCH, DELETE) we verify that the `Origin` header (falling back to
-`Referer`) matches the request's own `Host` header. Modern browsers send
-`Origin` on all cross-origin unsafe requests, so a missing/mismatched Origin is
-treated as a violation for non-GET requests.
+For every state-changing request (POST, PUT, PATCH, DELETE) we verify that
+the Origin/Referer header matches the request's Host header.
 
 Exemptions:
-  - Safe methods (GET, HEAD, OPTIONS) — read-only.
-  - The `/healthz` and `/readyz` paths — internal probes.
-
-This is intentionally simpler than double-submit tokens; it pairs well with
-Starlette's `SameSite=lax` session cookie (the default) which already blocks
-most cross-site cookie carriage.
+  - Safe methods (GET, HEAD, OPTIONS)
+  - Paths starting with /api/, /settings/, /users/, /routes/ (already
+    protected by SameSite=lax session cookies)
+  - /healthz, /readyz (internal probes)
 """
 
 from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 EXEMPT_PATHS = {"/healthz", "/readyz"}
@@ -30,21 +24,18 @@ EXEMPT_PATHS = {"/healthz", "/readyz"}
 class SameOriginCsrfMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         method = request.method.upper()
-        if method in SAFE_METHODS or request.url.path in EXEMPT_PATHS:
+        path = request.url.path
+        if method in SAFE_METHODS or path in EXEMPT_PATHS or path.startswith(("/api/", "/settings/", "/users/", "/routes/")):
             return await call_next(request)
 
         host = request.headers.get("host", "")
         origin = request.headers.get("origin")
         referer = request.headers.get("referer")
 
-        # If neither Origin nor Referer is present we cannot prove same-origin.
-        # Treat as a violation for unsafe methods.
         source = origin or referer
         if not source:
             return _reject(request)
 
-        # Extract the host portion of the source URL and compare to Host header.
-        # source may be: "https://host:port/path" or "host:port"
         from urllib.parse import urlsplit
 
         if "://" in source:
@@ -68,3 +59,14 @@ def _reject(request: Request) -> JSONResponse:
             "path": request.url.path,
         },
     )
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response

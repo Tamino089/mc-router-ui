@@ -26,8 +26,16 @@ async def router_request(method: str, path: str, **kwargs):
         return None, "mc-router is not responding (timeout)"
     except httpx.HTTPStatusError as e:
         return None, f"mc-router API error {e.response.status_code}: {e.response.text}"
+    except httpx.RemoteProtocolError as e:
+        return None, f"mc-router connection lost: {e}"
+    except httpx.ReadError as e:
+        return None, f"mc-router read error: {e}"
+    except httpx.WriteError as e:
+        return None, f"mc-router write error: {e}"
+    except httpx.TransportError as e:
+        return None, f"mc-router transport error: {e}"
     except Exception as e:
-        return None, f"Unknown error: {e}"
+        return None, f"mc-router error: {e}"
 
 
 async def push_route(hostname: str, backend: str) -> Optional[str]:
