@@ -92,26 +92,47 @@ async def edit_user(request: Request, user_id: int):
     if role not in ("admin", "user"):
         return JSONResponse({"success": False, "error": "Invalid role"}, status_code=400)
 
-    if role == "user":
-        with get_db() as con:
-            admin_count = con.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
-            curr_role = con.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()["role"]
-            if curr_role == "admin" and admin_count <= 1:
-                return JSONResponse({"success": False, "error": "Cannot demote the last admin"}, status_code=400)
-
+    # Single transaction: read-check-write avoids TOCTOU race
     with get_db() as con:
         try:
+            curr_row = con.execute(
+                "SELECT role FROM users WHERE id=?", (user_id,)
+            ).fetchone()
+            if not curr_row:
+                return JSONResponse({"success": False, "error": "User not found"}, status_code=404)
+
+            curr_role = curr_row["role"]
+
+            if role == "user" and curr_role == "admin":
+                admin_count = con.execute(
+                    "SELECT COUNT(*) FROM users WHERE role='admin'"
+                ).fetchone()[0]
+                if admin_count <= 1:
+                    return JSONResponse(
+                        {"success": False, "error": "Cannot demote the last admin"},
+                        status_code=400,
+                    )
+
             if password:
                 hashed = hash_password(password)
                 con.execute(
                     "UPDATE users SET username=?, password_hash=?, role=? WHERE id=?",
-                    (username, hashed, role, user_id)
+                    (username, hashed, role, user_id),
                 )
             else:
                 con.execute(
                     "UPDATE users SET username=?, role=? WHERE id=?",
-                    (username, role, user_id)
+                    (username, role, user_id),
                 )
+
+            # Grant default permissions when admin is demoted to user
+            if role == "user" and curr_role == "admin":
+                existing_count = con.execute(
+                    "SELECT COUNT(*) FROM permissions WHERE user_id=?", (user_id,)
+                ).fetchone()[0]
+                if existing_count == 0:
+                    grant_default_permissions(user_id, con)
+
             con.commit()
         except Exception:
             return JSONResponse({"success": False, "error": "Username already exists"}, status_code=409)
