@@ -163,26 +163,36 @@ async def crafty_change_port(
     with get_db() as con:
         chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
     chost = chost_row[0] if chost_row else "crafty"
-    old_bk = f"{chost}:{server_data.get('server_port')}"
-    new_bk = f"{chost}:{port}"
+    old_port = server_data.get("server_port")
     routes_updated = 0
-    with get_db() as con:
-        impacted = con.execute(
-            "SELECT id, hostname, is_default FROM routes WHERE backend=?", (old_bk,)
-        ).fetchall()
-        for r in impacted:
-            con.execute(
-                "UPDATE routes SET backend=? WHERE id=?",
-                (new_bk, r["id"]),
-            )
-            routes_updated += 1
-            if r["is_default"]:
-                err2 = await mc_router.push_default(new_bk)
-            else:
-                err2 = await mc_router.push_route(r["hostname"], new_bk)
-            if err2:
-                logger.warning("mc-router sync failed for route %d after port change: %s", r["id"], err2)
-        con.commit()
+    route_sync_warning = None
+    if not old_port:
+        route_sync_warning = (
+            f"Crafty has no prior port on record for this server (server_port is None). "
+            f"Could not match against existing routes to update them. "
+            f"Any route pointing at this server should be manually verified."
+        )
+        logger.warning("Port change for %s: %s", server_id, route_sync_warning)
+    else:
+        old_bk = f"{chost}:{old_port}"
+        new_bk = f"{chost}:{port}"
+        with get_db() as con:
+            impacted = con.execute(
+                "SELECT id, hostname, is_default FROM routes WHERE backend=?", (old_bk,)
+            ).fetchall()
+            for r in impacted:
+                con.execute(
+                    "UPDATE routes SET backend=? WHERE id=?",
+                    (new_bk, r["id"]),
+                )
+                routes_updated += 1
+                if r["is_default"]:
+                    err2 = await mc_router.push_default(new_bk)
+                else:
+                    err2 = await mc_router.push_route(r["hostname"], new_bk)
+                if err2:
+                    logger.warning("mc-router sync failed for route %d after port change: %s", r["id"], err2)
+            con.commit()
 
     # 7) Restart server if requested
     if restart:
@@ -195,11 +205,14 @@ async def crafty_change_port(
 
     logger.info("Port change completed: server_id=%s port=%d (%d routes updated)", server_id, port, routes_updated)
 
-    return JSONResponse({
+    resp = {
         "success": True,
         "message": f"Port changed to {port}. " + ("Server restarted." if restart else "Restart server to apply.") + (f" {routes_updated} route(s) updated in mc-router." if routes_updated else ""),
         "file_updated": file_updated,
         "file_path": str(prop_path) if prop_path else None,
         "api_updated": api_updated,
         "routes_updated": routes_updated,
-    })
+    }
+    if route_sync_warning:
+        resp["warning"] = route_sync_warning
+    return JSONResponse(resp)
