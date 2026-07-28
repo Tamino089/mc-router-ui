@@ -12,7 +12,7 @@ from app.core.config import MC_ROUTER_API
 
 logger = logging.getLogger(__name__)
 
-_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.TransportError, httpx.ConnectError)
+_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.TransportError)
 _MAX_RETRIES = 3
 _HEADERS = {"Connection": "close", "Content-Type": "application/json"}
 

@@ -94,10 +94,13 @@ async def crafty_request(method: str, path: str, **kwargs):
             except ValueError:
                 return None, f"Crafty API error (invalid JSON): {r.text[:200]}"
 
-            if data.get("status") not in ("success", "ok"):
-                return None, f"Crafty API error: {data.get('error', 'Unknown error')}"
-
-            return data.get("data"), None
+            if data and data.get("status") in ("error",):
+                return None, f"Crafty API error: {data.get('error', data.get('detail', 'Unknown error'))}"
+            if isinstance(data, dict) and "data" in data:
+                return data["data"], None
+            if isinstance(data, dict) and "status" not in data:
+                return data, None
+            return (data or {}).get("data") or data, None
 
     except (httpx.ConnectError, httpx.ConnectTimeout) as e:
         logger.error("[Crafty Connection Error] %s for %s %s: %s", type(e).__name__, method.upper(), url, e)
@@ -111,10 +114,20 @@ async def crafty_request(method: str, path: str, **kwargs):
 
 # ── server.properties management ──────────────────────────────────────────────
 
+_prop_path_cache: dict[str, Optional[Path]] = {}
+
+
 def get_server_properties_path(
     server_id: str, server_name: str = None
 ) -> Optional[Path]:
-    """Locate server.properties for a given server ID or name."""
+    """Locate server.properties for a given server ID or name.
+
+    Result is cached in-memory keyed by server_id to avoid repeated
+    filesystem globbing on every port-change request.
+    """
+    if server_id in _prop_path_cache:
+        return _prop_path_cache[server_id]
+
     candidate_dirs = [
         Path("/crafty/servers"),
         Path("/var/opt/crafty/servers"),
@@ -136,14 +149,14 @@ def get_server_properties_path(
                 continue
             target_dir = base_dir / folder_name
             if target_dir.exists() and target_dir.is_dir():
-                # Check root of server directory
                 direct_prop = target_dir / "server.properties"
                 if direct_prop.exists():
+                    _prop_path_cache[server_id] = direct_prop
                     return direct_prop
-                # Search recursively inside server folder
                 try:
                     for found in target_dir.rglob("server.properties"):
                         if found.is_file():
+                            _prop_path_cache[server_id] = found
                             return found
                 except Exception as e:
                     logger.warning("Error searching in %s: %s", target_dir, e)
@@ -158,9 +171,11 @@ def get_server_properties_path(
                     ):
                         direct_prop = child / "server.properties"
                         if direct_prop.exists():
+                            _prop_path_cache[server_id] = direct_prop
                             return direct_prop
                         for found in child.rglob("server.properties"):
                             if found.is_file():
+                                _prop_path_cache[server_id] = found
                                 return found
         except Exception as e:
             logger.warning("Error scanning base directory %s: %s", base_dir, e)
@@ -170,7 +185,9 @@ def get_server_properties_path(
     if env_exact:
         path = Path(env_exact)
         if path.exists():
+            _prop_path_cache[server_id] = path
             return path
+    _prop_path_cache[server_id] = None
     return None
 
 

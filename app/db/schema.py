@@ -21,6 +21,11 @@ def init_db() -> str:
     con = sqlite3.connect(str(config.DB_PATH))
     con.row_factory = sqlite3.Row
 
+    # ── Persistent WAL pragmas (set once, persist at DB-file level) ──────────
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA foreign_keys=ON")
+    con.execute("PRAGMA synchronous=NORMAL")
+
     # ── Migration: if routes table exists but has wrong schema, recreate ──────
     try:
         con.execute("SELECT hostname FROM routes LIMIT 1")

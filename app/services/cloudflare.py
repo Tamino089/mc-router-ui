@@ -201,15 +201,18 @@ async def get_zone_name_domain() -> Optional[str]:
     return None
 
 
-async def resolve_hostname(hostname: str) -> str:
-    """If hostname is just a subdomain (no dots), append the zone domain."""
+async def resolve_hostname(hostname: str) -> Optional[str]:
+    """If hostname is just a subdomain (no dots), append the zone domain.
+
+    Returns None if the hostname is a bare subdomain but no zone is configured.
+    """
     hostname = hostname.strip().lower()
     if not hostname or "." in hostname:
         return hostname
     zone = await get_zone_name_domain()
     if zone:
         return f"{hostname}.{zone}"
-    return hostname
+    return None
 
 
 async def validate_domain(

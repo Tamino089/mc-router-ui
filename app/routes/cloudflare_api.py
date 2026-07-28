@@ -104,7 +104,7 @@ async def validate_route_live(
     # Auto-resolve subdomain-only hostname for validation
     if not is_def and hostname and "." not in hostname:
         resolved = await cloudflare.resolve_hostname(hostname)
-        resolved_hostname = resolved
+        resolved_hostname = resolved or hostname
     else:
         resolved_hostname = hostname
 
