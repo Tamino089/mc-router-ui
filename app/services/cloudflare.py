@@ -172,14 +172,20 @@ async def get_zone_name_domain() -> Optional[str]:
         _cf_zone_name_cache = env_zone
         return env_zone
 
-    # Also check DB settings for zone name set via setup wizard
+    # Check env for CLOUDFLARE_ZONE_ID — also check DB for settings
     try:
         with get_db() as con:
             row = con.execute(
-                "SELECT value FROM settings WHERE key='cloudflare_zone_name'"
+                "SELECT value FROM settings WHERE key='cf_zone_name'"
             ).fetchone()
             if row and row[0]:
                 _cf_zone_name_cache = row[0].strip().lower()
+                return _cf_zone_name_cache
+            row2 = con.execute(
+                "SELECT value FROM settings WHERE key='cloudflare_zone_name'"
+            ).fetchone()
+            if row2 and row2[0]:
+                _cf_zone_name_cache = row2[0].strip().lower()
                 return _cf_zone_name_cache
     except Exception:
         pass
@@ -195,15 +201,29 @@ async def get_zone_name_domain() -> Optional[str]:
     return None
 
 
+async def resolve_hostname(hostname: str) -> str:
+    """If hostname is just a subdomain (no dots), append the zone domain."""
+    hostname = hostname.strip().lower()
+    if not hostname or "." in hostname:
+        return hostname
+    zone = await get_zone_name_domain()
+    if zone:
+        return f"{hostname}.{zone}"
+    return hostname
+
+
 async def validate_domain(
     hostname: str, is_default: bool
 ) -> tuple[bool, Optional[str]]:
     if is_default or hostname == "__default__":
         return True, None
     zone = await get_zone_name_domain()
+    hostname_clean = hostname.strip().lower()
     if zone:
-        hostname_clean = hostname.strip().lower()
         if hostname_clean == zone or hostname_clean.endswith("." + zone):
+            return True, None
+        # Allow subdomain-only entries
+        if "." not in hostname_clean:
             return True, None
         return (
             False,

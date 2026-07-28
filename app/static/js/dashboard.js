@@ -138,6 +138,7 @@ function toggleTheme() {
 let craftyServers = [];
 let validationTimer = null;
 let currentValidation = null;
+let savedHostname = ''; // preserves hostname when toggling default checkbox
 
 async function openRouteModal() {
   document.getElementById('route-modal-title').textContent = 'Create Route';
@@ -147,6 +148,7 @@ async function openRouteModal() {
   document.getElementById('f-hostname').disabled = false;
   document.getElementById('f-backend').value = '';
   document.getElementById('f-is-default').checked = false;
+  savedHostname = '';
   resetValidation();
 
   // Load Crafty servers for the quick-fill picker
@@ -187,9 +189,11 @@ function openEditRouteModal(id, hostname, backend, isDefault) {
   document.getElementById('f-route-id').value = id;
   document.getElementById('f-is-default').checked = isDefault;
 
+  const displayHostname = (hostname === '__default__' || isDefault) ? '' : hostname;
   const hostnameInput = document.getElementById('f-hostname');
-  hostnameInput.value = (hostname === '__default__' || isDefault) ? '' : hostname;
+  hostnameInput.value = displayHostname;
   hostnameInput.disabled = isDefault;
+  savedHostname = displayHostname;
 
   document.getElementById('f-backend').value = backend;
 
@@ -229,8 +233,14 @@ function closeRouteModal() { closeModal('route-modal'); }
 function onDefaultToggle() {
   const checked = document.getElementById('f-is-default').checked;
   const hostnameInput = document.getElementById('f-hostname');
-  hostnameInput.disabled = checked;
-  if (checked) hostnameInput.value = '';
+  if (checked) {
+    savedHostname = hostnameInput.value;
+    hostnameInput.value = '';
+    hostnameInput.disabled = true;
+  } else {
+    hostnameInput.value = savedHostname;
+    hostnameInput.disabled = false;
+  }
   triggerValidation();
 }
 

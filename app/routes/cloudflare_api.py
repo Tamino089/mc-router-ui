@@ -101,6 +101,13 @@ async def validate_route_live(
     hostname = hostname.strip().lower()
     backend = backend.strip()
 
+    # Auto-resolve subdomain-only hostname for validation
+    if not is_def and hostname and "." not in hostname:
+        resolved = await cloudflare.resolve_hostname(hostname)
+        resolved_hostname = resolved
+    else:
+        resolved_hostname = hostname
+
     res = {
         "hostname_format": {"status": "neutral", "message": ""},
         "cf_zone": {"status": "neutral", "message": ""},
@@ -119,17 +126,29 @@ async def validate_route_live(
         elif " " in hostname or not all(c.isalnum() or c in ".-" for c in hostname):
             res["hostname_format"] = {"status": "error", "message": "Hostname contains invalid characters."}
         else:
-            res["hostname_format"] = {"status": "success", "message": "Hostname format is valid."}
+            res["hostname_format"] = {"status": "success", "message": f"Hostname format valid → will resolve to: {resolved_hostname}"}
 
             token_cf, _, _ = get_cf_config()
             if token_cf:
-                valid, msg = await cloudflare.validate_domain(hostname, False)
+                valid, msg = await cloudflare.validate_domain(resolved_hostname, False)
                 if not valid:
                     res["cf_zone"] = {"status": "error", "message": msg}
                 else:
-                    res["cf_zone"] = {"status": "success", "message": "Hostname matches your Cloudflare zone."}
+                    res["cf_zone"] = {"status": "success", "message": f"Hostname '{resolved_hostname}' matches your Cloudflare zone."}
+
+                # DNS record check
+                zone_id, zerr = await cloudflare.cf_get_zone_id()
+                if not zerr and zone_id:
+                    existing_rec, _ = await cloudflare.cf_find_record(zone_id, resolved_hostname)
+                    if existing_rec:
+                        res["dns_record"] = {"status": "success", "message": f"DNS A-record already exists ({existing_rec.get('content', '?')})"}
+                    else:
+                        res["dns_record"] = {"status": "warning", "message": "No DNS A-record yet — will be created on save."}
+                else:
+                    res["dns_record"] = {"status": "neutral", "message": "Could not check DNS records."}
             else:
                 res["cf_zone"] = {"status": "warning", "message": "Cloudflare integration not configured."}
+                res["dns_record"] = {"status": "neutral", "message": "Cloudflare not configured."}
 
     # 2. Backend Format & Reachability
     if not backend:
