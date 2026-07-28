@@ -247,16 +247,22 @@ async def edit_route(request: Request, route_id: int):
         await cloudflare.cf_delete_record_by_hostname(old_hostname)
     if not is_def:
         cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
+    dns_done = not is_def and not cf_err
 
-    # Step 2: Update mc-router
-    sync_warn = ""
+    # Step 2: Update mc-router (hard requirement — rollback DNS on failure)
     if is_def:
         err = await mc_router.push_default(backend)
     else:
         err = await mc_router.push_route(hostname, backend)
     if err:
-        sync_warn = f" (mc-router sync: {err})"
-        logger.warning("Route %d saved to DB but mc-router sync failed: %s", route_id, err)
+        # Rollback DNS if mc-router fails
+        if dns_done:
+            await cloudflare.cf_delete_record_by_hostname(hostname)
+        return JSONResponse({
+            "success": False,
+            "status": "PARTIAL_FAILURE",
+            "errors": [{"code": "MC_ROUTER_SYNC_FAILED", "message": err}],
+        }, status_code=502)
 
     # Delete OLD route from mc-router (only if hostname changed)
     if not old_is_default and old_hostname != hostname:
@@ -283,10 +289,7 @@ async def edit_route(request: Request, route_id: int):
     elif cf_err:
         dns_msg = f" (DNS: {cf_err})"
 
-    resp = {"success": True, "message": f"Route updated successfully{dns_msg}"}
-    if sync_warn:
-        resp["warning"] = sync_warn
-    return JSONResponse(resp)
+    return JSONResponse({"success": True, "message": f"Route updated successfully{dns_msg}"})
 
 
 @router.post("/routes/delete/{route_id}")

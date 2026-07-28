@@ -12,21 +12,29 @@ from app.core.config import MC_ROUTER_API
 
 logger = logging.getLogger(__name__)
 
-_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.TransportError)
+_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.TransportError, httpx.ConnectError)
 _MAX_RETRIES = 3
+_HEADERS = {"Connection": "close", "Content-Type": "application/json"}
 
 
 async def router_request(method: str, path: str, **kwargs):
     """Generic mc-router API call with retry on transient errors.
 
     Returns (response, error_string).
+    Uses Connection: close to prevent keep-alive socket resets.
     """
     url = MC_ROUTER_API.rstrip("/") + path
     last_err = None
+    headers = {**_HEADERS, **(kwargs.pop("headers", {}))}
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await getattr(client, method)(url, **kwargs)
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await getattr(client, method)(url, headers=headers, **kwargs)
+                if r.status_code >= 500:
+                    last_err = f"mc-router API error {r.status_code}: {r.text}"
+                    if attempt < _MAX_RETRIES:
+                        await asyncio.sleep(0.5 * attempt)
+                        continue
                 r.raise_for_status()
                 return r, None
         except _RETRYABLE as e:
@@ -35,14 +43,14 @@ async def router_request(method: str, path: str, **kwargs):
             if attempt < _MAX_RETRIES:
                 await asyncio.sleep(0.5 * attempt)
         except httpx.ConnectError:
-            return None, f"Connection to mc-router ({MC_ROUTER_API}) failed"
+            return None, f"mc-router unreachable ({MC_ROUTER_API})"
         except httpx.TimeoutException:
-            return None, "mc-router is not responding (timeout)"
+            return None, "mc-router not responding (timeout)"
         except httpx.HTTPStatusError as e:
-            return None, f"mc-router API error {e.response.status_code}: {e.response.text}"
+            return None, f"mc-router rejected: {e.response.status_code} {e.response.text}"
         except Exception as e:
             return None, f"mc-router error: {e}"
-    return None, f"mc-router connection lost: {last_err}"
+    return None, f"mc-router connection lost after {_MAX_RETRIES} retries: {last_err}"
 
 
 async def push_route(hostname: str, backend: str) -> Optional[str]:
