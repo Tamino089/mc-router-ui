@@ -16,30 +16,37 @@ from app.services.health import check_all_routes
 logger = logging.getLogger(__name__)
 
 # ── In-memory subscriber management ──────────────────────────────────────────
-_subscribers: list[asyncio.Queue] = []
+_subscriber_counter = 0
+subscribers: list[tuple[int, asyncio.Queue]] = []
 
 
 def subscribe() -> asyncio.Queue:
-    q: asyncio.Queue = asyncio.Queue()
-    _subscribers.append(q)
+    global _subscriber_counter
+    _subscriber_counter += 1
+    q: asyncio.Queue = asyncio.Queue(maxsize=100)
+    subscribers.append((_subscriber_counter, q))
     return q
 
 
 def unsubscribe(q: asyncio.Queue):
-    if q in _subscribers:
-        _subscribers.remove(q)
+    global subscribers
+    subscribers = [(sid, sq) for sid, sq in subscribers if sq is not q]
 
 
 async def broadcast(event: str, data: Any):
     payload = json.dumps(data)
-    dead = []
-    for q in _subscribers:
+    dead: list[int] = []
+    for sid, q in subscribers:
         try:
             q.put_nowait(f"event: {event}\ndata: {payload}\n\n")
         except asyncio.QueueFull:
-            dead.append(q)
-    for q in dead:
-        unsubscribe(q)
+            logger.warning(
+                "SSE subscriber %d queue full (maxsize=100) — dropping and removing",
+                sid,
+            )
+            dead.append(sid)
+    if dead:
+        subscribers[:] = [(sid, q) for sid, q in subscribers if sid not in dead]
 
 
 # ── Background emitter loop ──────────────────────────────────────────────────
