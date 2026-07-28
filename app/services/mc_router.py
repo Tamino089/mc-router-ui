@@ -2,6 +2,7 @@
 Async wrapper for communicating with the mc-router REST API.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -11,31 +12,37 @@ from app.core.config import MC_ROUTER_API
 
 logger = logging.getLogger(__name__)
 
+_RETRYABLE = (httpx.RemoteProtocolError, httpx.ReadError, httpx.WriteError, httpx.TransportError)
+_MAX_RETRIES = 3
+
 
 async def router_request(method: str, path: str, **kwargs):
-    """Generic mc-router API call. Returns (response, error_string)."""
+    """Generic mc-router API call with retry on transient errors.
+
+    Returns (response, error_string).
+    """
     url = MC_ROUTER_API.rstrip("/") + path
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await getattr(client, method)(url, **kwargs)
-            r.raise_for_status()
-            return r, None
-    except httpx.ConnectError:
-        return None, f"Connection to mc-router ({MC_ROUTER_API}) failed"
-    except httpx.TimeoutException:
-        return None, "mc-router is not responding (timeout)"
-    except httpx.HTTPStatusError as e:
-        return None, f"mc-router API error {e.response.status_code}: {e.response.text}"
-    except httpx.RemoteProtocolError as e:
-        return None, f"mc-router connection lost: {e}"
-    except httpx.ReadError as e:
-        return None, f"mc-router read error: {e}"
-    except httpx.WriteError as e:
-        return None, f"mc-router write error: {e}"
-    except httpx.TransportError as e:
-        return None, f"mc-router transport error: {e}"
-    except Exception as e:
-        return None, f"mc-router error: {e}"
+    last_err = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await getattr(client, method)(url, **kwargs)
+                r.raise_for_status()
+                return r, None
+        except _RETRYABLE as e:
+            last_err = e
+            logger.warning("mc-router %s %s attempt %d/%d failed: %s", method.upper(), path, attempt, _MAX_RETRIES, e)
+            if attempt < _MAX_RETRIES:
+                await asyncio.sleep(0.5 * attempt)
+        except httpx.ConnectError:
+            return None, f"Connection to mc-router ({MC_ROUTER_API}) failed"
+        except httpx.TimeoutException:
+            return None, "mc-router is not responding (timeout)"
+        except httpx.HTTPStatusError as e:
+            return None, f"mc-router API error {e.response.status_code}: {e.response.text}"
+        except Exception as e:
+            return None, f"mc-router error: {e}"
+    return None, f"mc-router connection lost: {last_err}"
 
 
 async def push_route(hostname: str, backend: str) -> Optional[str]:
