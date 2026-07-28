@@ -15,6 +15,7 @@ from app.db.database import get_db
 
 logger = logging.getLogger(__name__)
 
+<<<<<<< HEAD
 # Crafty is commonly self-hosted with a self-signed cert on the local
 # network. Disabling TLS verification unconditionally would silently accept
 # ANY certificate for ANY crafty_url an admin ever configures, which is a
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 # Require an explicit opt-in instead of defaulting to insecure.
 CRAFTY_VERIFY_TLS = os.getenv("CRAFTY_INSECURE_SKIP_VERIFY", "").lower() not in ("1", "true", "yes")
 
+=======
+>>>>>>> origin/master
 
 async def crafty_request(method: str, path: str, **kwargs):
     """Generic Crafty Controller API call."""
@@ -61,7 +64,11 @@ async def crafty_request(method: str, path: str, **kwargs):
     )
 
     try:
+<<<<<<< HEAD
         async with httpx.AsyncClient(verify=CRAFTY_VERIFY_TLS, timeout=10) as client:
+=======
+        async with httpx.AsyncClient(verify=False, timeout=10) as client:
+>>>>>>> origin/master
             r = await getattr(client, method)(url, headers=headers, **kwargs)
             logger.info(
                 "[Crafty Response] %s %s -> HTTP %d",
