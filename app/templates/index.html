@@ -23,6 +23,7 @@ window.MC_UI_CONFIG = {
   userPerms: {{ user_perms | list | tojson }},
   allPerms:  {{ all_permissions | tojson }},
   cfEnabled: {{ 'true' if cf_enabled else 'false' }},
+  dockerEnabled: {{ 'true' if docker_enabled else 'false' }},
 };
 </script>
 </head>
@@ -184,6 +185,7 @@ window.MC_UI_CONFIG = {
         <thead>
           <tr>
             <th>Hostname</th>
+            <th>Source</th>
             <th>Backend</th>
             <th>Status</th>
             <th>Connections</th>
@@ -193,12 +195,22 @@ window.MC_UI_CONFIG = {
         </thead>
         <tbody>
           {% for r in routes %}
-          <tr id="row-{{ r.id }}" data-hostname="{{ r.hostname }}">
+          <tr id="row-{{ r.id }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}">
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
                 <span class="mono text-white">{{ r.hostname if r.hostname != '__default__' else '*' }}</span>
                 {% if r.is_default %}<span class="badge badge-default">Default</span>{% endif %}
               </div>
+            </td>
+            <td>
+              {% if r.source == 'docker' %}
+              <span class="badge badge-docker">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><circle cx="12" cy="12" r="10"/></svg>
+                Docker
+              </span>
+              {% else %}
+              <span class="badge badge-static">Static</span>
+              {% endif %}
             </td>
             <td>
               <div style="display:flex;align-items:center;gap:6px;">
@@ -223,6 +235,9 @@ window.MC_UI_CONFIG = {
               <span class="badge badge-owner">{{ r.owner_name }}</span>
             </td>
             <td class="actions-cell">
+              {% if r.source == 'docker' %}
+              <span class="text-muted" style="font-size:11px;">Managed by Docker</span>
+              {% else %}
               {% set can_edit   = current_user.role == 'admin' or (r.owner_id == current_user.id and 'edit_own_route' in user_perms) %}
               {% set can_delete = current_user.role == 'admin' or (r.owner_id == current_user.id and 'delete_own_route' in user_perms) %}
               {% if can_edit %}
@@ -240,6 +255,7 @@ window.MC_UI_CONFIG = {
                 </svg>
                 Delete
               </button>
+              {% endif %}
               {% endif %}
             </td>
           </tr>

@@ -45,6 +45,7 @@ services:
 
     volumes:
       - mc-router-ui-data:/data   # SQLite DB + persistence
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker socket (read-only) for route discovery
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=5)"]

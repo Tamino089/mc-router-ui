@@ -522,6 +522,9 @@ main {
 .badge-online  { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-glow); }
 .badge-offline { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger-glow); }
 .badge-owner   { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); font-size: 11px; }
+.badge-docker  { background: rgba(0, 153, 245, 0.12); color: #0099f5; border: 1px solid rgba(0, 153, 245, 0.25); font-size: 10px; letter-spacing: 0.03em; }
+.badge-docker svg { margin-right: 2px; }
+.badge-static  { background: var(--surface3); color: var(--muted); border: 1px solid var(--border); font-size: 10px; letter-spacing: 0.03em; }
 .badge-admin   { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--border-accent); }
 .badge-user    { background: var(--surface3); color: var(--muted); border: 1px solid var(--border); }
 

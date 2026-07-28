@@ -4,6 +4,7 @@ CRUD operations for Minecraft routes.
 
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -11,12 +12,24 @@ from fastapi.responses import JSONResponse
 from app.core.security import current_user
 from app.db.database import get_db
 from app.db.schema import user_has_perm
-from app.services import cloudflare, mc_router
+from app.services import cloudflare, docker_watcher, mc_router
 from app.services.health import tcp_check
+from app.services.sse import broadcast
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Strict validation patterns ────────────────────────────────────────────────
+HOSTNAME_RE = re.compile(
+    r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+)
+SOCKET_ADDR_RE = re.compile(
+    r'^([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}:([0-9]{1,5})$'
+)
+IP_PORT_RE = re.compile(
+    r'^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$'
+)
 
 
 async def _get_form_or_json(request: Request) -> dict:
@@ -74,14 +87,41 @@ async def add_route(request: Request):
     if not raw_hostname and not is_def:
         return JSONResponse({"success": False, "error": "Hostname is required"}, status_code=400)
 
+    # ── Strict backend validation ────────────────────────────────────────────
+    if not is_def and not SOCKET_ADDR_RE.match(backend) and not IP_PORT_RE.match(backend):
+        return JSONResponse(
+            {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
+            status_code=400,
+        )
+    parts = backend.rsplit(":", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        port = int(parts[1])
+        if port < 1 or port > 65535:
+            return JSONResponse({"success": False, "error": "Port must be between 1 and 65535"}, status_code=400)
+
     try:
         # Resolve subdomain-only hostname (e.g. "play" → "play.tamino089.com")
         hostname = raw_hostname
         if not is_def:
             hostname = await cloudflare.resolve_hostname(raw_hostname)
+
+            # ── Strict hostname validation ────────────────────────────────────
+            if not HOSTNAME_RE.match(hostname):
+                return JSONResponse(
+                    {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
+                    status_code=400,
+                )
+
             valid, v_err = await cloudflare.validate_domain(hostname, False)
             if not valid:
                 return JSONResponse({"success": False, "error": v_err}, status_code=400)
+
+            # ── Block Docker-managed hostnames ────────────────────────────────
+            if await docker_watcher.is_docker_managed(hostname):
+                return JSONResponse(
+                    {"success": False, "error": f"'{hostname}' is managed by a Docker container label and cannot be edited here"},
+                    status_code=409,
+                )
 
         # Step 1: Create DNS record (rollback if later steps fail)
         dns_done = False
@@ -101,7 +141,6 @@ async def add_route(request: Request):
         else:
             err = await mc_router.push_route(hostname, backend)
         if err:
-            # Rollback DNS if mc-router fails
             if dns_done:
                 await cloudflare.cf_delete_record_by_hostname(hostname)
             return JSONResponse({"success": False, "error": f"mc-router sync failed: {err}"}, status_code=500)
@@ -113,7 +152,6 @@ async def add_route(request: Request):
                     "SELECT id FROM routes WHERE hostname=?", (hostname,)
                 ).fetchone()
                 if existing:
-                    # Rollback DNS and mc-router
                     if dns_done:
                         await cloudflare.cf_delete_record_by_hostname(hostname)
                     if not is_def:
@@ -131,7 +169,7 @@ async def add_route(request: Request):
                         )
 
                 cur = con.execute(
-                    "INSERT INTO routes (hostname, backend, is_default, owner_id) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO routes (hostname, backend, is_default, source, owner_id) VALUES (?, ?, ?, 'static', ?)",
                     (hostname, backend, int(is_def), user["id"]),
                 )
                 route_id = cur.lastrowid
@@ -148,6 +186,9 @@ async def add_route(request: Request):
             raise
 
         await _trigger_health_check(route_id, backend)
+
+        # Broadcast route change via SSE
+        await broadcast("route-change", {"action": "add", "route_id": route_id, "hostname": hostname})
 
         resp = {"success": True, "message": f"Route added successfully{dns_msg}"}
         if sync_warn:
@@ -179,6 +220,13 @@ async def edit_route(request: Request, route_id: int):
         r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
         if not r_row:
             return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
+
+        # ── Block editing Docker-managed routes ───────────────────────────────
+        if r_row["source"] == "docker":
+            return JSONResponse(
+                {"success": False, "error": "This route is managed by Docker labels and cannot be edited"},
+                status_code=403,
+            )
 
         if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
             return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
@@ -226,6 +274,9 @@ async def edit_route(request: Request, route_id: int):
 
     await _trigger_health_check(route_id, backend)
 
+    # Broadcast route change via SSE
+    await broadcast("route-change", {"action": "edit", "route_id": route_id, "hostname": hostname})
+
     dns_msg = ""
     if not is_def and not cf_err:
         dns_msg = " (DNS synced)"
@@ -249,6 +300,13 @@ async def delete_route(request: Request, route_id: int):
         if not r_row:
             return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
 
+        # ── Block deleting Docker-managed routes ─────────────────────────────
+        if r_row["source"] == "docker":
+            return JSONResponse(
+                {"success": False, "error": "This route is managed by Docker labels and cannot be deleted"},
+                status_code=403,
+            )
+
         if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
             return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
         if r_row["owner_id"] == user["id"] and not user_has_perm(user, "delete_own_route"):
@@ -270,5 +328,8 @@ async def delete_route(request: Request, route_id: int):
         cf_err = await cloudflare.cf_delete_record_by_hostname(hostname)
         if cf_err:
             logger.warning("Failed to delete DNS record: %s", cf_err)
+
+    # Broadcast route change via SSE
+    await broadcast("route-change", {"action": "delete", "route_id": route_id, "hostname": hostname})
 
     return JSONResponse({"success": True, "message": "Route deleted successfully"})

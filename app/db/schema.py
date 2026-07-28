@@ -42,6 +42,7 @@ def init_db() -> str:
             hostname    TEXT UNIQUE NOT NULL,
             backend     TEXT NOT NULL,
             is_default  INTEGER NOT NULL DEFAULT 0,
+            source      TEXT NOT NULL DEFAULT 'static',
             created_at  TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS settings (
@@ -78,6 +79,16 @@ def init_db() -> str:
         CREATE INDEX IF NOT EXISTS idx_health_history_route_time
             ON health_history(route_id, checked_at DESC);
     """)
+
+    # ── Non-destructive migration: add source column to routes ─────────────────
+    try:
+        con.execute("SELECT source FROM routes LIMIT 1")
+    except sqlite3.OperationalError:
+        logger.info("Migrating: adding source column to routes table...")
+        con.execute(
+            "ALTER TABLE routes ADD COLUMN source TEXT NOT NULL DEFAULT 'static'"
+        )
+        con.commit()
 
     # ── Non-destructive migration: add owner_id to routes ─────────────────────
     try:

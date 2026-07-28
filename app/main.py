@@ -14,10 +14,11 @@ from app.core.csrf import SameOriginCsrfMiddleware
 from app.core.security import current_user
 from app.db import schema
 from app.db.database import get_db
-from app.services import cloudflare, health, mc_router
+from app.services import cloudflare, docker_watcher, health, mc_router
+from app.services.sse import sse_emitter_loop
 
 # Routers
-from app.routes import auth, cloudflare_api, crafty_api, healthz, monitoring, routes, settings, users
+from app.routes import auth, cloudflare_api, crafty_api, events, healthz, monitoring, routes, settings, users
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -39,12 +40,16 @@ async def lifespan(app: FastAPI):
     # Start background loops
     ddns_task = asyncio.create_task(cloudflare.ddns_loop())
     health_task = asyncio.create_task(health.health_loop())
+    sse_task = asyncio.create_task(sse_emitter_loop())
+    docker_task = asyncio.create_task(docker_watcher.docker_watcher_loop())
     
     yield
     
     # Shutdown
     ddns_task.cancel()
     health_task.cancel()
+    sse_task.cancel()
+    docker_task.cancel()
     logger.info("MC Router UI shutdown complete.")
 
 
@@ -63,6 +68,7 @@ app.include_router(settings.router)
 app.include_router(cloudflare_api.router)
 app.include_router(crafty_api.router)
 app.include_router(monitoring.router)
+app.include_router(events.router)
 
 
 # ── Global exception handler ────────────────────────────────────────────────
@@ -87,7 +93,7 @@ async def dashboard(request: Request):
     user_perms = schema.get_user_perms(user["id"]) if user["role"] != "admin" else set(config.ALL_PERMISSIONS)
 
     with get_db() as con:
-        # Load routes
+        # Load routes from DB (static sources)
         if user["role"] == "admin" or "see_all_routes" in user_perms:
             db_routes = con.execute(
                 """SELECT r.*, u.username as owner_name, h.healthy, h.latency_ms
@@ -108,6 +114,30 @@ async def dashboard(request: Request):
             ).fetchall()
 
         routes_data = [dict(r) for r in db_routes]
+
+        # Merge Docker-discovered routes (read-only)
+        docker_routes = await docker_watcher.discover_docker_routes()
+        for dr in docker_routes:
+            existing = next((r for r in routes_data if r["hostname"] == dr["hostname"]), None)
+            if existing:
+                existing["source"] = "docker"
+                existing["container_name"] = dr["container_name"]
+                existing["docker_running"] = dr["running"]
+            else:
+                routes_data.append({
+                    "id": None,
+                    "hostname": dr["hostname"],
+                    "backend": dr["backend"],
+                    "is_default": 0,
+                    "source": "docker",
+                    "container_name": dr["container_name"],
+                    "docker_running": dr["running"],
+                    "owner_name": "Docker",
+                    "owner_id": None,
+                    "healthy": None,
+                    "latency_ms": None,
+                    "active_connections": 0,
+                })
 
         # Enhance with active connections
         conns = await mc_router.get_connections()
@@ -166,5 +196,6 @@ async def dashboard(request: Request):
             "mc_port": config.MC_PORT,
             "mc_router_api": config.MC_ROUTER_API,
             "show_wizard": show_wizard,
+            "docker_enabled": config.DOCKER_ENABLED,
         },
     )

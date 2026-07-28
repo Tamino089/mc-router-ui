@@ -11,6 +11,7 @@ const USER_ID    = window.MC_UI_CONFIG?.userId ?? 0;
 const USER_PERMS = new Set(window.MC_UI_CONFIG?.userPerms ?? []);
 const ALL_PERMS  = window.MC_UI_CONFIG?.allPerms ?? [];
 const CF_ENABLED = window.MC_UI_CONFIG?.cfEnabled ?? false;
+const DOCKER_ENABLED = window.MC_UI_CONFIG?.dockerEnabled ?? false;
 
 // ── Permission labels ─────────────────────────────────────────────────────────
 const PERM_LABELS = {
@@ -1033,4 +1034,63 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => el.remove(), 400);
     }, 5000);
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SSE — real-time event stream, replaces polling
+  // ═══════════════════════════════════════════════════════════════════════════
+  function connectSSE() {
+    const evtSource = new EventSource('/api/events');
+
+    evtSource.addEventListener('connected', () => {
+      console.debug('[SSE] Connected');
+    });
+
+    evtSource.addEventListener('connections', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        let total = 0;
+        Object.entries(data).forEach(([hostname, count]) => {
+          const rows = document.querySelectorAll(`[data-hostname="${CSS.escape(hostname)}"]`);
+          rows.forEach(row => {
+            const connEl = row.querySelector('.conn-count');
+            if (connEl) connEl.textContent = count;
+          });
+          total += count;
+        });
+        const totalEl = document.getElementById('total-conns');
+        if (totalEl) totalEl.textContent = total;
+      } catch {}
+    });
+
+    evtSource.addEventListener('router-status', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const dot = document.getElementById('router-dot');
+        const text = document.getElementById('router-status-text');
+        if (!dot || !text) return;
+        if (d.online) {
+          dot.className = 'dot dot-green';
+          text.textContent = 'mc-router online';
+          text.style.color = 'var(--green)';
+        } else {
+          dot.className = 'dot dot-red';
+          text.textContent = 'mc-router offline';
+          text.style.color = 'var(--danger)';
+        }
+      } catch {}
+    });
+
+    evtSource.addEventListener('route-change', () => {
+      // Reload the page when routes change (SSE push from add/edit/delete)
+      setTimeout(() => window.location.reload(), 1000);
+    });
+
+    evtSource.onerror = () => {
+      // Reconnect automatically — EventSource does this by default
+      console.debug('[SSE] Connection error, reconnecting...');
+    };
+  }
+
+  connectSSE();
+});
 });

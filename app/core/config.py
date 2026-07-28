@@ -33,6 +33,10 @@ CF_ENABLED = bool(CF_API_TOKEN and (CF_ZONE_ID or CF_ZONE_NAME))
 CRAFTY_URL_ENV = os.getenv("CRAFTY_URL", "")
 CRAFTY_API_KEY_ENV = os.getenv("CRAFTY_API_KEY", "")
 
+# ── Docker socket ──────────────────────────────────────────────────────────────
+DOCKER_SOCKET = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
+DOCKER_ENABLED = os.path.exists(DOCKER_SOCKET)
+
 # ── Health checks ─────────────────────────────────────────────────────────────
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))
 HEALTH_HISTORY_RETENTION_HOURS = int(os.getenv("HEALTH_HISTORY_RETENTION_HOURS", "24"))
