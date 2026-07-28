@@ -342,6 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const d = await r.json();
       if (d.success) {
         showToast(d.message || 'Route saved successfully', 'success');
+        if (d.warning) showToast(d.warning, 'info', 6000);
         closeRouteModal();
         setTimeout(() => window.location.reload(), 800);
       } else {

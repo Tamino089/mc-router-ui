@@ -94,13 +94,15 @@ async def add_route(request: Request):
             route_id = cur.lastrowid
             con.commit()
 
+        # Try mc-router sync — soft fail
+        sync_warn = ""
         if is_def:
             err = await mc_router.push_default(backend)
         else:
             err = await mc_router.push_route(hostname, backend)
-
         if err:
-            return JSONResponse({"success": False, "error": f"Route saved but mc-router sync failed: {err}"}, status_code=500)
+            sync_warn = f" (mc-router sync: {err})"
+            logger.warning("Route %d saved to DB but mc-router sync failed: %s", route_id, err)
 
         dns_msg = ""
         if not is_def:
@@ -112,7 +114,10 @@ async def add_route(request: Request):
 
         await _trigger_health_check(route_id, backend)
 
-        return JSONResponse({"success": True, "message": f"Route added successfully{dns_msg}"})
+        resp = {"success": True, "message": f"Route added successfully{dns_msg}"}
+        if sync_warn:
+            resp["warning"] = sync_warn
+        return JSONResponse(resp)
 
     except Exception as e:
         logger.exception("Error adding route")
@@ -148,23 +153,29 @@ async def edit_route(request: Request, route_id: int):
             if existing:
                 return JSONResponse({"success": False, "error": "Hostname already exists"}, status_code=409)
 
-    if is_def:
-        err = await mc_router.push_default(backend)
-    else:
-        err = await mc_router.push_route(hostname, backend)
-
-    if err:
-        return JSONResponse({"success": False, "error": f"Route updated but sync failed: {err}"}, status_code=500)
-
-    if not old_is_default and old_hostname != hostname:
-        await mc_router.delete_route(old_hostname)
-
+    # Save to DB first
     with get_db() as con:
         con.execute(
             "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
             (hostname, backend, int(is_def), route_id),
         )
         con.commit()
+
+    # Try mc-router sync — soft fail
+    sync_warn = ""
+    if is_def:
+        err = await mc_router.push_default(backend)
+    else:
+        err = await mc_router.push_route(hostname, backend)
+    if err:
+        sync_warn = f" (mc-router sync: {err})"
+        logger.warning("Route %d saved to DB but mc-router sync failed: %s", route_id, err)
+
+    # Delete OLD route from mc-router (only if hostname changed)
+    if not old_is_default and old_hostname != hostname:
+        del_err = await mc_router.delete_route(old_hostname)
+        if del_err:
+            logger.warning("Failed to delete old route %s from mc-router: %s", old_hostname, del_err)
 
     cf_err = None
     if old_hostname != hostname and not old_is_default:
@@ -180,7 +191,10 @@ async def edit_route(request: Request, route_id: int):
     elif cf_err:
         dns_msg = f" (DNS: {cf_err})"
 
-    return JSONResponse({"success": True, "message": f"Route updated successfully{dns_msg}"})
+    resp = {"success": True, "message": f"Route updated successfully{dns_msg}"}
+    if sync_warn:
+        resp["warning"] = sync_warn
+    return JSONResponse(resp)
 
 
 @router.post("/routes/delete/{route_id}")
