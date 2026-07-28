@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 *.env
-git-auth.sh
+.sh
 
 # ── Python ───────────────────────────────────────────────
 __pycache__/
