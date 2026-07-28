@@ -43,4 +43,37 @@ def verify_password(password: str, hashed: str) -> bool:
 # ── Session helpers ───────────────────────────────────────────────────────────
 
 def current_user(request: Request) -> dict | None:
-    return request.session.get("user")
+    """Return the current authenticated user dict, or None.
+
+    The role field is re-fetched from the DB on every call so that
+    demotions, permission changes, and user-deletion take effect
+    immediately without requiring a re-login.
+    """
+    session_user = request.session.get("user")
+    if not session_user:
+        return None
+
+    user_id = session_user.get("id")
+    if not user_id:
+        return None
+
+    # Deferred import to avoid circular dependency at module level
+    from app.db.database import get_db
+
+    try:
+        with get_db() as con:
+            row = con.execute(
+                "SELECT role FROM users WHERE id=?", (user_id,)
+            ).fetchone()
+    except Exception:
+        # DB unreachable — use cached session data rather than fail-closed
+        return session_user
+
+    if not row:
+        # User was deleted — clear session
+        request.session.pop("user", None)
+        return None
+
+    # Keep id/username from session, refresh role from DB
+    session_user["role"] = row["role"]
+    return session_user
