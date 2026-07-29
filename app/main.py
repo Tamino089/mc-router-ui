@@ -106,7 +106,7 @@ async def dashboard(request: Request):
                    LEFT JOIN health_checks h ON r.id = h.route_id
                    ORDER BY r.is_default DESC, r.hostname ASC"""
             ).fetchall()
-        else:
+        elif "see_own_routes" in user_perms:
             db_routes = con.execute(
                 """SELECT r.*, u.username as owner_name, h.healthy, h.latency_ms
                    FROM routes r
@@ -116,6 +116,8 @@ async def dashboard(request: Request):
                    ORDER BY r.is_default DESC, r.hostname ASC""",
                 (user["id"],),
             ).fetchall()
+        else:
+            db_routes = []
 
         routes_data = [dict(r) for r in db_routes]
 

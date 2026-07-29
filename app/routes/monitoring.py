@@ -98,8 +98,11 @@ async def get_all_connections(request: Request):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     conns = await mc_router.get_connections()
-    if user.get("role") == "admin" or "see_all_routes" in user_has_perm_set(user):
+    perms = user_has_perm_set(user)
+    if user.get("role") == "admin" or "see_all_routes" in perms:
         return conns
+    if "see_own_routes" not in perms:
+        return {}
 
     with get_db() as con:
         visible = {
@@ -119,9 +122,18 @@ async def get_used_ports(request: Request):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
+    perms = user_has_perm_set(user)
     used = []
     with get_db() as con:
-        rows = con.execute("SELECT backend FROM routes").fetchall()
+        if user.get("role") == "admin" or "see_all_routes" in perms:
+            rows = con.execute("SELECT backend FROM routes").fetchall()
+        elif "see_own_routes" in perms:
+            rows = con.execute(
+                "SELECT backend FROM routes WHERE owner_id=?",
+                (user["id"],),
+            ).fetchall()
+        else:
+            rows = []
         for r in rows:
             parts = r["backend"].rsplit(":", 1)
             if len(parts) == 2 and parts[1].isdigit():
