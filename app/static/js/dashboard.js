@@ -547,7 +547,7 @@ async function loadCfRecords() {
           <td><span class="mono text-white">${esc(rec.name)}</span></td>
           <td>
             <span class="backend-pill">${esc(rec.content)}</span>
-            <button class="copy-btn" onclick="copyToClipboard('${esc(rec.content)}',this)" title="Copy IP">
+            <button class="copy-btn" data-copy="${esc(rec.content)}" title="Copy IP">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
@@ -556,7 +556,7 @@ async function loadCfRecords() {
           <td class="text-muted">${rec.ttl === 1 ? 'Auto' : rec.ttl + 's'}</td>
           <td><span class="ts-rel">${ts}</span></td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-danger btn-sm" onclick="deleteCfRecord('${esc(rec.id)}','${esc(rec.name)}')">
+            <button class="btn btn-danger btn-sm" data-cf-id="${esc(rec.id)}" data-cf-name="${esc(rec.name)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
               Delete
             </button>
@@ -692,16 +692,16 @@ async function loadCraftyServers() {
             <span class="mono">${esc(String(s.port))}${portHealth}</span>
           </td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-ghost btn-sm" onclick="openCraftyPortModal('${esc(s.id)}','${esc(s.name)}',${s.port})" title="Change port">
+            <button class="btn btn-ghost btn-sm" data-crafty-port-id="${esc(s.id)}" data-crafty-port-name="${esc(s.name)}" data-crafty-port="${Number(s.port) || 0}" title="Change port">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Port
             </button>
-            <button class="btn btn-sm ${s.running ? 'btn-ghost' : 'btn-green'}" onclick="craftyAction('${esc(s.id)}','${s.running ? 'restart' : 'start'}',this)">
+            <button class="btn btn-sm ${s.running ? 'btn-ghost' : 'btn-green'}" data-crafty-action-id="${esc(s.id)}" data-crafty-action="${s.running ? 'restart' : 'start'}">
               ${s.running
                 ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg> Restart'
                 : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start'}
             </button>
-            ${s.running ? `<button class="btn btn-danger btn-sm" onclick="craftyAction('${esc(s.id)}','stop',this)">
+            ${s.running ? `<button class="btn btn-danger btn-sm" data-crafty-action-id="${esc(s.id)}" data-crafty-action="stop">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
               Stop
             </button>` : ''}
@@ -807,7 +807,7 @@ async function loadUsersList() {
           <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
           <td>
             ${u.role !== 'admin' && canManage
-              ? `<button class="btn btn-ghost btn-sm" onclick="openPermModal(${u.id},'${esc(u.username)}')">
+              ? `<button class="btn btn-ghost btn-sm" data-perm-user-id="${u.id}" data-perm-username="${esc(u.username)}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Permissions
                 </button>`
@@ -815,11 +815,11 @@ async function loadUsersList() {
           </td>
           <td class="text-muted" style="font-size:12px;">${createdDate}</td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-ghost btn-sm" onclick="openEditUserModal(${u.id},'${esc(u.username)}','${u.role}')">
+            <button class="btn btn-ghost btn-sm" data-edit-user-id="${u.id}" data-edit-user-name="${esc(u.username)}" data-edit-user-role="${esc(u.role)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Edit
             </button>
-            ${!isMe ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteUser(${u.id},'${esc(u.username)}')">
+            ${!isMe ? `<button class="btn btn-danger btn-sm" data-delete-user-id="${u.id}" data-delete-user-name="${esc(u.username)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
               Delete
             </button>` : ''}
@@ -1005,10 +1005,42 @@ function relTime(isoString) {
   } catch { return ''; }
 }
 
+function bindDynamicActions() {
+  document.addEventListener('click', event => {
+    const target = event.target.closest('[data-copy], [data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id]');
+    if (!target) return;
+
+    if (target.dataset.copy !== undefined) {
+      copyToClipboard(target.dataset.copy, target);
+    } else if (target.dataset.cfId) {
+      deleteCfRecord(target.dataset.cfId, target.dataset.cfName);
+    } else if (target.dataset.craftyPortId) {
+      openCraftyPortModal(
+        target.dataset.craftyPortId,
+        target.dataset.craftyPortName,
+        Number(target.dataset.craftyPort) || 0,
+      );
+    } else if (target.dataset.craftyActionId) {
+      craftyAction(target.dataset.craftyActionId, target.dataset.craftyAction, target);
+    } else if (target.dataset.permUserId) {
+      openPermModal(target.dataset.permUserId, target.dataset.permUsername);
+    } else if (target.dataset.editUserId) {
+      openEditUserModal(
+        target.dataset.editUserId,
+        target.dataset.editUserName,
+        target.dataset.editUserRole,
+      );
+    } else if (target.dataset.deleteUserId) {
+      confirmDeleteUser(target.dataset.deleteUserId, target.dataset.deleteUserName);
+    }
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  bindDynamicActions();
   // Check router status immediately and every 30s
   checkRouterStatus();
   setInterval(checkRouterStatus, 30000);

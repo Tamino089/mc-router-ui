@@ -215,7 +215,7 @@ window.MC_UI_CONFIG = {
             <td>
               <div style="display:flex;align-items:center;gap:6px;">
                 <span class="backend-pill">{{ r.backend }}</span>
-                <button class="copy-btn" onclick="copyToClipboard('{{ r.backend }}',this)" title="Copy backend address">
+                <button class="copy-btn" onclick="copyToClipboard({{ r.backend|tojson }},this)" title="Copy backend address">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                   </svg>
@@ -224,8 +224,8 @@ window.MC_UI_CONFIG = {
             </td>
             <td>
               <div class="health-cell" id="health-cell-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-route-id="{{ r.id or '' }}">
-                <div class="dot {% if r.id is none %}dot-gray{% elif r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}"></div>
-                <span class="health-label" id="health-text-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}">{% if r.id is none %}Managed by Docker{% elif r.healthy %}Reachable{% else %}Offline{% endif %}</span>
+                <div class="dot {% if r.id is none or r.healthy is none %}dot-gray{% elif r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}"></div>
+                <span class="health-label" id="health-text-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}">{% if r.id is none %}Managed by Docker{% elif r.healthy is none %}Not checked{% elif r.healthy %}Reachable{% else %}Offline{% endif %}</span>
               </div>
             </td>
             <td>
@@ -241,7 +241,7 @@ window.MC_UI_CONFIG = {
               {% set can_edit   = current_user.role == 'admin' or (r.owner_id == current_user.id and 'edit_own_route' in user_perms) %}
               {% set can_delete = current_user.role == 'admin' or (r.owner_id == current_user.id and 'delete_own_route' in user_perms) %}
               {% if can_edit %}
-              <button class="btn btn-ghost btn-sm" onclick="openEditRouteModal({{ r.id }}, '{{ r.hostname }}', '{{ r.backend }}', {{ r.is_default|lower }})">
+              <button class="btn btn-ghost btn-sm" onclick="openEditRouteModal({{ r.id }}, {{ r.hostname|tojson }}, {{ r.backend|tojson }}, {{ r.is_default|lower }})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                 </svg>
@@ -249,7 +249,7 @@ window.MC_UI_CONFIG = {
               </button>
               {% endif %}
               {% if can_delete %}
-              <button class="btn btn-danger btn-sm" onclick="confirmDeleteRoute({{ r.id }}, '{{ r.hostname }}')">
+              <button class="btn btn-danger btn-sm" onclick="confirmDeleteRoute({{ r.id }}, {{ r.hostname|tojson }})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>
                 </svg>
