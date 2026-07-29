@@ -2,6 +2,8 @@
 Health and monitoring endpoints.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -33,7 +35,7 @@ async def check_route_health(request: Request, route_id: int):
     else:
         host, port = backend, 25565
 
-    healthy, latency = tcp_check(host, port)
+    healthy, latency = await asyncio.to_thread(tcp_check, host, port)
     
     # Update DB async (or synchronously, it's fast enough)
     with get_db() as con:

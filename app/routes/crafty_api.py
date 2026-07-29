@@ -50,7 +50,7 @@ async def get_crafty_servers(request: Request):
         # TCP health check from our container to the game server
         port_reachable = False
         if running and port:
-            port_reachable, _ = tcp_check(chost, int(port), timeout=1.5)
+            port_reachable, _ = await asyncio.to_thread(tcp_check, chost, int(port), 1.5)
 
         servers.append({
             "id": server_id,

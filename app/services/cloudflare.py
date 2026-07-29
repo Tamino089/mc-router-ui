@@ -181,12 +181,6 @@ async def get_zone_name_domain() -> Optional[str]:
             if row and row[0]:
                 _cf_zone_name_cache = row[0].strip().lower()
                 return _cf_zone_name_cache
-            row2 = con.execute(
-                "SELECT value FROM settings WHERE key='cloudflare_zone_name'"
-            ).fetchone()
-            if row2 and row2[0]:
-                _cf_zone_name_cache = row2[0].strip().lower()
-                return _cf_zone_name_cache
     except Exception:
         pass
 

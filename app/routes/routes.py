@@ -117,7 +117,11 @@ async def add_route(request: Request):
     try:
         # Resolve subdomain-only hostname (e.g. "play" → "play.tamino089.com")
         hostname = raw_hostname
-        if not is_def:
+        if is_def:
+            # Default routes use a sentinel so the UNIQUE constraint and
+            # DNS-skip logic in sync_dns_for_route() work correctly.
+            hostname = raw_hostname or "__default__"
+        else:
             hostname = await cloudflare.resolve_hostname(raw_hostname)
             if not hostname:
                 return JSONResponse(

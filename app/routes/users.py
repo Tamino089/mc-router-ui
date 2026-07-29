@@ -3,6 +3,7 @@ User and permission management routes.
 """
 
 import logging
+import sqlite3
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -72,7 +73,7 @@ async def add_user(request: Request):
                 grant_default_permissions(new_id, con)
             con.commit()
         return JSONResponse({"success": True, "message": "User created successfully"})
-    except Exception:
+    except sqlite3.IntegrityError:
         return JSONResponse({"success": False, "error": "Username already exists"}, status_code=409)
 
 
@@ -113,7 +114,7 @@ async def edit_user(request: Request, user_id: int):
                     (username, role, user_id)
                 )
             con.commit()
-        except Exception:
+        except sqlite3.IntegrityError:
             return JSONResponse({"success": False, "error": "Username already exists"}, status_code=409)
 
     return JSONResponse({"success": True, "message": "User updated successfully"})

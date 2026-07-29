@@ -46,7 +46,7 @@ async def discover_docker_routes(force: bool = False) -> list[dict]:
       hostname, backend, source='docker', running, container_name
     """
     global _cache, _cache_ts
-    now = asyncio.get_event_loop().time()
+    now = asyncio.get_running_loop().time()
     if not force and _cache and (now - _cache_ts) < _CACHE_TTL:
         return _cache
 
