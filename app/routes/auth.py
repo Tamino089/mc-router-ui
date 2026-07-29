@@ -9,7 +9,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.core.security import verify_password
+from app.core.security import current_user, verify_password
 from app.db.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def _record_attempt(ip: str) -> None:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
-    if request.session.get("user"):
+    if current_user(request):
         return RedirectResponse(url="/", status_code=303)
     return templates.TemplateResponse("login.html", {"request": request})
 
@@ -81,7 +81,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     )
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)

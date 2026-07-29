@@ -1,0 +1,33 @@
+{% set url_error = request.query_params.get('error', '') %}
+{% set url_success = request.query_params.get('success', '') %}
+{% set pw_error = request.query_params.get('pw_error', '') %}
+{% set pw_ok = request.query_params.get('pw_success', '') %}
+
+{% if url_error %}
+<div class="flash flash-error" role="alert">
+  <span class="flash-icon" aria-hidden="true">⚠</span>
+  <span class="flash-msg">{{ url_error }}</span>
+  <button class="flash-close" type="button" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+</div>
+{% endif %}
+{% if url_success %}
+<div class="flash flash-success" role="status">
+  <span class="flash-icon" aria-hidden="true">✓</span>
+  <span class="flash-msg">{{ url_success }}</span>
+  <button class="flash-close" type="button" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+</div>
+{% endif %}
+{% if pw_error %}
+<div class="flash flash-error" role="alert">
+  <span class="flash-icon" aria-hidden="true">⚠</span>
+  <span class="flash-msg">{{ pw_error }}</span>
+  <button class="flash-close" type="button" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+</div>
+{% endif %}
+{% if pw_ok %}
+<div class="flash flash-success" role="status">
+  <span class="flash-icon" aria-hidden="true">✓</span>
+  <span class="flash-msg">Password changed successfully.</span>
+  <button class="flash-close" type="button" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+</div>
+{% endif %}

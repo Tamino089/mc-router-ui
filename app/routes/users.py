@@ -93,15 +93,23 @@ async def edit_user(request: Request, user_id: int):
     if role not in ("admin", "user"):
         return JSONResponse({"success": False, "error": "Invalid role"}, status_code=400)
 
-    if role == "user":
-        with get_db() as con:
-            admin_count = con.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
-            curr_role = con.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()["role"]
-            if curr_role == "admin" and admin_count <= 1:
-                return JSONResponse({"success": False, "error": "Cannot demote the last admin"}, status_code=400)
-
     with get_db() as con:
         try:
+            existing = con.execute(
+                "SELECT role FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            if not existing:
+                return JSONResponse({"success": False, "error": "User not found"}, status_code=404)
+            if role == "user" and existing["role"] == "admin":
+                admin_count = con.execute(
+                    "SELECT COUNT(*) FROM users WHERE role='admin'"
+                ).fetchone()[0]
+                if admin_count <= 1:
+                    return JSONResponse(
+                        {"success": False, "error": "Cannot demote the last admin"},
+                        status_code=400,
+                    )
             if password:
                 hashed = hash_password(password)
                 con.execute(
@@ -113,6 +121,10 @@ async def edit_user(request: Request, user_id: int):
                     "UPDATE users SET username=?, role=? WHERE id=?",
                     (username, role, user_id)
                 )
+            if role == "user":
+                grant_default_permissions(user_id, con)
+            else:
+                con.execute("DELETE FROM permissions WHERE user_id=?", (user_id,))
             con.commit()
         except sqlite3.IntegrityError:
             return JSONResponse({"success": False, "error": "Username already exists"}, status_code=409)
