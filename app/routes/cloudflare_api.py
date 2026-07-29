@@ -97,6 +97,32 @@ async def validate_route(request: Request):
     is_default = request.query_params.get("is_default", "false").lower() == "true"
     route_id = request.query_params.get("route_id", "")
 
+    if route_id:
+        try:
+            route_id_value = int(route_id)
+        except ValueError:
+            return JSONResponse({"success": False, "error": "Invalid route id"}, status_code=400)
+
+        from app.db.database import get_db
+
+        with get_db() as con:
+            route = con.execute(
+                "SELECT owner_id FROM routes WHERE id=?",
+                (route_id_value,),
+            ).fetchone()
+        if not route:
+            return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
+        if (
+            user.get("role") != "admin"
+            and (
+                route["owner_id"] != user["id"]
+                or not user_has_perm(user, "edit_own_route")
+            )
+        ):
+            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
+    elif user.get("role") != "admin" and not user_has_perm(user, "create_route"):
+        return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
+
     # Default response structure matching frontend expectations
     res = {
         "val-format": {"status": "neutral", "message": ""},
@@ -138,7 +164,7 @@ async def validate_route(request: Request):
             with get_db() as con:
                 existing = con.execute(
                     "SELECT id FROM routes WHERE hostname=? AND id!=?",
-                    (hostname, int(route_id) if route_id else -1)
+                    (hostname, int(route_id) if route_id else -1),
                 ).fetchone()
                 if existing:
                     res["val-dns"] = {"status": "error", "message": "Hostname already exists in database"}
