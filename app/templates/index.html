@@ -457,10 +457,10 @@ window.MC_UI_CONFIG = {
       </div>
     </div>
 
-    {% if current_user.role == 'admin' %}
+    {% if 'manage_cloudflare' in user_perms or current_user.role == 'admin' %}
     <hr class="section-divider">
 
-    <!-- Cloudflare API settings (admin) -->
+    <!-- Cloudflare API settings -->
     <div style="margin-bottom:26px;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16">
@@ -490,8 +490,10 @@ window.MC_UI_CONFIG = {
       </div>
     </div>
     <hr class="section-divider">
+    {% endif %}
 
-    <!-- Crafty settings (admin) -->
+    {% if 'manage_settings' in user_perms or current_user.role == 'admin' %}
+    <!-- Crafty settings -->
     <div style="margin-bottom:26px;">
       <h3 style="font-size:15px;font-weight:700;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16">
@@ -521,9 +523,10 @@ window.MC_UI_CONFIG = {
       </div>
     </div>
     <hr class="section-divider">
+    {% endif %}
 
-    <!-- User management (admin) -->
     {% if 'see_all_users' in user_perms or current_user.role == 'admin' %}
+    <!-- User management -->
     <div>
       <div class="section-header" style="margin-bottom:16px;">
         <div class="section-title">
@@ -561,7 +564,6 @@ window.MC_UI_CONFIG = {
         </table>
       </div>
     </div>
-    {% endif %}
     {% endif %}
   </div>
 
