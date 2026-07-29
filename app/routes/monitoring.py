@@ -30,12 +30,10 @@ def _visible_route(request: Request, route_id: int):
 
     if not route:
         return None, JSONResponse({"error": "Route not found"}, status_code=404)
-    if (
-        user.get("role") != "admin"
-        and "see_all_routes" not in user_has_perm_set(user)
-        and route["owner_id"] != user["id"]
-    ):
-        return None, JSONResponse({"error": "Forbidden"}, status_code=403)
+    perms = user_has_perm_set(user)
+    if user.get("role") != "admin" and "see_all_routes" not in perms:
+        if "see_own_routes" not in perms or route["owner_id"] != user["id"]:
+            return None, JSONResponse({"error": "Forbidden"}, status_code=403)
     return route, None
 
 

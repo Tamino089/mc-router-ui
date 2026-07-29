@@ -49,7 +49,7 @@ window.MC_UI_CONFIG = {
   <!-- Tab navigation -->
   <div class="header-center">
     <div class="tabs-bar" id="main-tabs-bar" role="tablist">
-      <button class="tab-btn active" id="tab-btn-routes" role="tab" aria-selected="true" onclick="switchTab('routes')">
+      <button class="tab-btn active" id="tab-btn-routes" role="tab" aria-selected="true" aria-controls="tab-routes" tabindex="0" onclick="switchTab('routes')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 11l19-9-9 19-2-8-8-2z"/>
         </svg>
@@ -57,7 +57,7 @@ window.MC_UI_CONFIG = {
         <span class="tab-count" id="tab-count-routes">{{ routes|length }}</span>
       </button>
 
-      <button class="tab-btn" id="tab-btn-settings" role="tab" aria-selected="false" onclick="switchTab('settings')">
+      <button class="tab-btn" id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="-1" onclick="switchTab('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
@@ -117,45 +117,12 @@ window.MC_UI_CONFIG = {
     <option value="settings">Settings</option>
   </select>
 
-  <!-- Flash messages -->
-  {% set url_error   = request.query_params.get('error', '') %}
-  {% set url_success = request.query_params.get('success', '') %}
-  {% set pw_error    = request.query_params.get('pw_error', '') %}
-  {% set pw_ok       = request.query_params.get('pw_success', '') %}
-
-  {% if url_error %}
-  <div class="flash flash-error" role="alert">
-    <span class="flash-icon">⚠</span>
-    <span class="flash-msg">{{ url_error }}</span>
-    <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
-  </div>
-  {% endif %}
-  {% if url_success %}
-  <div class="flash flash-success" role="alert">
-    <span class="flash-icon">✓</span>
-    <span class="flash-msg">{{ url_success }}</span>
-    <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
-  </div>
-  {% endif %}
-  {% if pw_error %}
-  <div class="flash flash-error" role="alert">
-    <span class="flash-icon">⚠</span>
-    <span class="flash-msg">{{ pw_error }}</span>
-    <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
-  </div>
-  {% endif %}
-  {% if pw_ok %}
-  <div class="flash flash-success" role="alert">
-    <span class="flash-icon">✓</span>
-    <span class="flash-msg">Password changed successfully.</span>
-    <button class="flash-close" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
-  </div>
-  {% endif %}
+  {% include "partials/flash_messages.html" %}
 
   <!-- ════════════════════════════════════════════════════════════════════════
        TAB 1: ROUTES
        ════════════════════════════════════════════════════════════════════════ -->
-  <div class="tab-content active" id="tab-routes" role="tabpanel">
+  <div class="tab-content active" id="tab-routes" role="tabpanel" aria-labelledby="tab-btn-routes">
     <div class="section-header">
       <div class="section-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round">
@@ -389,7 +356,7 @@ window.MC_UI_CONFIG = {
   <!-- ════════════════════════════════════════════════════════════════════════
        TAB 2: SETTINGS
        ════════════════════════════════════════════════════════════════════════ -->
-  <div class="tab-content" id="tab-settings" role="tabpanel">
+  <div class="tab-content" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
     <div class="section-header">
       <div class="section-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20">

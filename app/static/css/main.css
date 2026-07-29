@@ -994,6 +994,22 @@ main {
   .mobile-tab-select { display: block; }
 }
 
+@media (max-width: 768px) {
+  .card { overflow-x: auto; }
+  .data-table { min-width: 760px; }
+  .header-right { gap: 4px; }
+  .router-status { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    SPARKLINES (Health Hub)
    ══════════════════════════════════════════════════════════════════════════════ */

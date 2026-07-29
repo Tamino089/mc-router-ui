@@ -78,6 +78,10 @@ function switchTab(name) {
   const btn = document.getElementById('tab-btn-' + name);
   if (content) content.classList.add('active');
   if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(tab => {
+    tab.setAttribute('aria-selected', tab === btn ? 'true' : 'false');
+    tab.setAttribute('tabindex', tab === btn ? '0' : '-1');
+  });
 
   // Update mobile select
   const mSel = document.getElementById('mobile-tab-select');
@@ -96,11 +100,25 @@ function switchTab(name) {
 // ══════════════════════════════════════════════════════════════════════════════
 function openModal(id) {
   const el = document.getElementById(id);
-  if (el) { el.classList.add('open'); trapFocus(el); }
+  if (el) {
+    modalReturnFocus = document.activeElement;
+    activeModal = el;
+    el.classList.add('open');
+    trapFocus(el);
+  }
 }
 function closeModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.remove('open');
+  if (el) {
+    el.classList.remove('open');
+    if (activeModal === el) {
+      activeModal = null;
+      if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
+        modalReturnFocus.focus();
+      }
+      modalReturnFocus = null;
+    }
+  }
 }
 
 // Close on overlay click
@@ -116,8 +134,23 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-overlay.open').forEach(m => {
-      if (m.id !== 'wizard-modal') m.classList.remove('open');
+      if (m.id !== 'wizard-modal') closeModal(m.id);
     });
+  }
+  if (e.key === 'Tab' && activeModal) {
+    const focusable = [...activeModal.querySelectorAll(
+      'button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )].filter(el => !el.disabled);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 });
 
@@ -144,6 +177,8 @@ let craftyServers = [];
 let validationTimer = null;
 let currentValidation = null;
 let savedHostname = ''; // preserves hostname when toggling default checkbox
+let activeModal = null;
+let modalReturnFocus = null;
 
 async function openRouteModal() {
   document.getElementById('route-modal-title').textContent = 'Create Route';
@@ -787,7 +822,14 @@ async function loadUsersList() {
 
   try {
     const r = await fetch('/api/users');
-    if (!r.ok) { tbody.innerHTML = ''; return; }
+    if (r.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    if (!r.ok) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">Unable to load users. Check your permissions and retry.</td></tr>';
+      return;
+    }
     const users = await r.json();
     const canManage = IS_ADMIN || USER_PERMS.has('manage_users');
 
@@ -1045,6 +1087,21 @@ function bindDynamicActions() {
 // ══════════════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   bindDynamicActions();
+  document.querySelectorAll('[role="tab"]').forEach(tab => {
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const current = tabs.indexOf(tab);
+      const next = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      event.preventDefault();
+      tabs[next].focus();
+      switchTab(tabs[next].id.replace('tab-btn-', ''));
+    });
+  });
   // Check router status immediately and every 30s
   checkRouterStatus();
   setInterval(checkRouterStatus, 30000);
