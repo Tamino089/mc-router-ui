@@ -121,8 +121,16 @@ async def dashboard(request: Request):
 
         routes_data = [dict(r) for r in db_routes]
 
-        # Merge Docker-discovered routes (read-only)
-        docker_routes = await docker_watcher.discover_docker_routes()
+        # Docker routes are not owned by an application user, so only users
+        # allowed to see all routes may view this read-only source.
+        can_see_docker_routes = (
+            user["role"] == "admin" or "see_all_routes" in user_perms
+        )
+        docker_routes = (
+            await docker_watcher.discover_docker_routes()
+            if can_see_docker_routes
+            else []
+        )
         for dr in docker_routes:
             existing = next((r for r in routes_data if r["hostname"] == dr["hostname"]), None)
             if existing:
