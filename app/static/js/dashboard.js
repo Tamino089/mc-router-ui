@@ -39,7 +39,11 @@ function showToast(message, type = 'info', duration = 4000) {
   const icons = { success: '✓', error: '⚠', info: 'ℹ' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`;
+  const icon = document.createElement('span');
+  icon.textContent = icons[type] || 'ℹ';
+  const content = document.createElement('span');
+  content.textContent = String(message);
+  toast.append(icon, content);
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -522,7 +526,7 @@ async function loadCfRecords() {
     const d = await r.json();
 
     if (!d.success) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">${d.error}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">${esc(d.error || 'Cloudflare request failed')}</td></tr>`;
       return;
     }
 

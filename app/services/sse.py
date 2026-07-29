@@ -7,11 +7,9 @@ Replaces REST polling for health status, connection counts, and route changes.
 import asyncio
 import json
 import logging
-import time
 from typing import Any
 
 from app.services import mc_router
-from app.services.health import check_all_routes
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +18,7 @@ _subscribers: list[asyncio.Queue] = []
 
 
 def subscribe() -> asyncio.Queue:
-    q: asyncio.Queue = asyncio.Queue()
+    q: asyncio.Queue = asyncio.Queue(maxsize=100)
     _subscribers.append(q)
     return q
 
@@ -44,17 +42,14 @@ async def broadcast(event: str, data: Any):
 
 # ── Background emitter loop ──────────────────────────────────────────────────
 async def sse_emitter_loop():
-    """Periodically checks health + connections and broadcasts to subscribers."""
+    """Publish connection and router status updates to connected clients."""
     while True:
         try:
-            # 1) Health check all routes
-            await check_all_routes()
-
-            # 2) Fetch connections from mc-router
+            # Health checks are owned by health_loop; this worker only emits
+            # connection and router status events.
             conns = await mc_router.get_connections()
             await broadcast("connections", conns)
 
-            # 3) Router status
             _, err = await mc_router.router_request("get", "/routes")
             await broadcast("router-status", {"online": err is None, "error": err})
 
