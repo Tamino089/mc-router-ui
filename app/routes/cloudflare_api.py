@@ -192,11 +192,11 @@ async def validate_route(request: Request):
                 host, port = parts[0], int(parts[1])
                 from app.services.health import tcp_check
                 import asyncio
-                healthy, latency = await asyncio.to_thread(tcp_check, host, port, 2.0)
+                healthy, latency, tcp_err = await asyncio.to_thread(tcp_check, host, port, 2.0)
                 if healthy:
                     res["val-backend"] = {"status": "success", "message": f"Reachable ({latency}ms)"}
                 else:
-                    res["val-backend"] = {"status": "error", "message": "Backend unreachable (TCP connection failed)"}
+                    res["val-backend"] = {"status": "error", "message": tcp_err or "Backend unreachable (TCP connection failed)"}
             else:
                 res["val-backend"] = {"status": "error", "message": "Invalid backend format (host:port)"}
         except Exception:

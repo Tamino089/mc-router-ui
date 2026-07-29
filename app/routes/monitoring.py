@@ -57,18 +57,19 @@ async def check_route_health(request: Request, route_id: int):
     else:
         host, port = backend, 25565
 
-    healthy, latency = await asyncio.to_thread(tcp_check, host, port)
-    
+    healthy, latency, error = await asyncio.to_thread(tcp_check, host, port)
+
     # Update DB async (or synchronously, it's fast enough)
     with get_db() as con:
         con.execute(
-            """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at)
-               VALUES (?, ?, ?, datetime('now'))
+            """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at, error)
+               VALUES (?, ?, ?, datetime('now'), ?)
                ON CONFLICT(route_id) DO UPDATE SET
                    healthy=excluded.healthy,
                    latency_ms=excluded.latency_ms,
-                   checked_at=excluded.checked_at""",
-            (route_id, int(healthy), latency if healthy else None),
+                   checked_at=excluded.checked_at,
+                   error=excluded.error""",
+            (route_id, int(healthy), latency if healthy else None, error or None),
         )
         con.execute(
             """INSERT INTO health_history (route_id, healthy, latency_ms, checked_at)
@@ -77,7 +78,7 @@ async def check_route_health(request: Request, route_id: int):
         )
         con.commit()
 
-    return {"healthy": healthy, "latency_ms": latency}
+    return {"healthy": healthy, "latency_ms": latency, "error": error}
 
 
 @router.get("/api/router-status")

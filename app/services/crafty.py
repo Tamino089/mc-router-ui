@@ -113,6 +113,19 @@ async def crafty_request(method: str, path: str, **kwargs):
 
     except (httpx.ConnectError, httpx.ConnectTimeout) as e:
         logger.error("[Crafty Connection Error] %s for %s %s: %s", type(e).__name__, method.upper(), url, e)
+        err_text = str(e)
+        # httpx wraps SSL certificate failures inside ConnectError. Self-hosted
+        # Crafty almost always runs on a self-signed cert, so this is the most
+        # common real cause of "Crafty won't connect" — surface it distinctly
+        # instead of a generic "host unreachable", which sends people chasing
+        # the wrong problem (firewall/network) instead of the actual fix.
+        if "CERTIFICATE_VERIFY_FAILED" in err_text or "certificate verify failed" in err_text.lower():
+            return None, (
+                "Crafty connection error: TLS certificate verification failed. "
+                "Self-hosted Crafty commonly uses a self-signed certificate — "
+                "set CRAFTY_INSECURE_SKIP_VERIFY=true if you trust this host, "
+                "or install a valid certificate on Crafty."
+            )
         return None, f"Crafty connection error: Host unreachable ({e})"
     except httpx.TimeoutException as e:
         return None, f"Crafty connection error: Timeout ({e})"

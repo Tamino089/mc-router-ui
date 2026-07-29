@@ -193,8 +193,8 @@ window.MC_UI_CONFIG = {
             </td>
             <td>
               <div class="health-cell" id="health-cell-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-route-id="{{ r.id or '' }}">
-                <div class="dot {% if r.id is none or r.healthy is none %}dot-gray{% elif r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}"></div>
-                <span class="health-label" id="health-text-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}">{% if r.id is none %}Managed by Docker{% elif r.healthy is none %}Not checked{% elif r.healthy %}Reachable{% else %}Offline{% endif %}</span>
+                <div class="dot {% if r.id is none or r.healthy is none %}dot-gray{% elif r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" {% if r.health_error %}title="{{ r.health_error }}"{% endif %}></div>
+                <span class="health-label" id="health-text-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" {% if r.health_error %}title="{{ r.health_error }}"{% endif %}>{% if r.id is none %}Managed by Docker{% elif r.healthy is none %}Not checked{% elif r.healthy %}Reachable{% elif r.health_error %}Offline — {{ r.health_error }}{% else %}Offline{% endif %}</span>
               </div>
             </td>
             <td>

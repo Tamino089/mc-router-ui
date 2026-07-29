@@ -5,42 +5,44 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* ── Design Tokens: Dark (default) ─────────────────────────────────────────── */
+/* ── Design Tokens: Dark (default) — pure black, minimalist ───────────────────
+   True-black surfaces with restrained, low-saturation accents. Every surface
+   is distinguished by border/luminance only — no colored glows or gradients. */
 :root,
 [data-theme="dark"] {
-  --bg:         #0e0f13;
-  --surface:    #16181d;
-  --surface2:   #1c1f26;
-  --surface3:   #232730;
-  --glass:      rgba(22, 24, 29, 0.85);
+  --bg:         #000000;
+  --surface:    #000000;
+  --surface2:   #0a0a0a;
+  --surface3:   #141414;
+  --glass:      rgba(0, 0, 0, 0.9);
 
-  --border:         rgba(255, 255, 255, 0.07);
-  --border-hover:   rgba(255, 255, 255, 0.14);
-  --border-accent:  rgba(246, 130, 31, 0.35);
+  --border:         rgba(255, 255, 255, 0.09);
+  --border-hover:   rgba(255, 255, 255, 0.18);
+  --border-accent:  rgba(255, 255, 255, 0.4);
 
-  --accent:         #F6821F;
-  --accent-light:   #FF9D3D;
-  --accent-dim:     rgba(246, 130, 31, 0.12);
-  --accent-glow:    rgba(246, 130, 31, 0.22);
+  --accent:         #ffffff;
+  --accent-light:   #ffffff;
+  --accent-dim:     rgba(255, 255, 255, 0.08);
+  --accent-glow:    rgba(255, 255, 255, 0.12);
 
-  --green:       #22c55e;
-  --green-dim:   rgba(34, 197, 94, 0.12);
-  --green-glow:  rgba(34, 197, 94, 0.22);
-  --blue:        #3b82f6;
-  --blue-dim:    rgba(59, 130, 246, 0.12);
-  --danger:      #ef4444;
-  --danger-dim:  rgba(239, 68, 68, 0.12);
-  --danger-glow: rgba(239, 68, 68, 0.18);
-  --warn:        #f59e0b;
-  --warn-dim:    rgba(245, 158, 11, 0.12);
+  --green:       #2ecc71;
+  --green-dim:   rgba(46, 204, 113, 0.1);
+  --green-glow:  rgba(46, 204, 113, 0.18);
+  --blue:        #4d9dff;
+  --blue-dim:    rgba(77, 157, 255, 0.1);
+  --danger:      #ff4d4f;
+  --danger-dim:  rgba(255, 77, 79, 0.1);
+  --danger-glow: rgba(255, 77, 79, 0.16);
+  --warn:        #e0a326;
+  --warn-dim:    rgba(224, 163, 38, 0.1);
 
-  --text:    #f0f0f2;
-  --text-2:  #c1c6d0;
-  --muted:   #6b7585;
+  --text:    #f5f5f5;
+  --text-2:  #b8b8b8;
+  --muted:   #6e6e6e;
 
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md:  0 4px 16px rgba(0,0,0,0.4);
-  --shadow-lg:  0 8px 40px rgba(0,0,0,0.5);
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.6);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.7);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.8);
 
   color-scheme: dark;
 }
@@ -96,6 +98,10 @@
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Any plain native checkbox/radio (e.g. the Crafty "restart" checkbox) picks
+   up the theme accent instead of the browser's raw default control. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
 /* ── Base ───────────────────────────────────────────────────────────────────── */
 html { scroll-behavior: smooth; }
 
@@ -144,7 +150,7 @@ header {
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.logo-mark svg { width: 18px; height: 18px; color: #fff; }
+.logo-mark svg { width: 18px; height: 18px; color: #000; }
 
 .logo-text { display: flex; flex-direction: column; gap: 1px; }
 .logo-text h1 { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; line-height: 1; }
@@ -210,8 +216,8 @@ header {
 .user-avatar {
   width: 26px; height: 26px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-light));
+  font-size: 11px; font-weight: 700; color: #000;
+  background: var(--accent);
   flex-shrink: 0;
 }
 
@@ -387,7 +393,7 @@ main {
 /* Primary */
 .btn-primary {
   background: var(--accent);
-  color: #fff;
+  color: #000;
   border-color: var(--accent);
 }
 .btn-primary:hover { background: var(--accent-light); border-color: var(--accent-light); }
@@ -407,7 +413,7 @@ main {
   border-color: var(--danger-glow);
   color: var(--danger);
 }
-.btn-danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-danger:hover { background: var(--danger); color: #000; border-color: var(--danger); }
 
 /* Blue */
 .btn-blue {
@@ -415,7 +421,7 @@ main {
   border-color: rgba(59,130,246,0.25);
   color: var(--blue);
 }
-.btn-blue:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-blue:hover { background: var(--blue); color: #000; border-color: var(--blue); }
 
 /* Green */
 .btn-green {
@@ -423,7 +429,7 @@ main {
   border-color: var(--green-glow);
   color: var(--green);
 }
-.btn-green:hover { background: var(--green); color: #fff; border-color: var(--green); }
+.btn-green:hover { background: var(--green); color: #000; border-color: var(--green); }
 
 /* Size variants */
 .btn-sm { padding: 5px 12px; font-size: 12px; gap: 5px; }
@@ -667,7 +673,13 @@ main {
 }
 
 /* ── Custom Toggle Switch ─────────────────────────────────────────────────── */
-.toggle-row {
+/* NOTE: this is deliberately ".form-group label.toggle-row" (not just
+   ".toggle-row"). ".form-group label" above sets display:block, and since
+   that selector is MORE specific than a bare ".toggle-row" class, it was
+   silently winning the cascade and collapsing this flex switch into a
+   stacked, misaligned block — the "weirdly styled checkbox" bug. Qualifying
+   the selector this way guarantees this rule always wins. */
+.form-group label.toggle-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -680,6 +692,8 @@ main {
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   transition: border-color 0.15s, background 0.15s;
+  position: relative; /* containing block for the hidden checkbox below */
+  margin-bottom: 0;
 }
 .toggle-row:hover { border-color: var(--border-hover); }
 

@@ -3,6 +3,23 @@
 #
 # Unraid users: Configure environment variables directly in the Unraid Docker UI.
 # All ports and paths are controlled via ENV — no need to edit this file.
+#
+# ⚠️  NETWORKING — READ THIS IF ROUTES NEVER SHOW "REACHABLE":
+# Health checks and the Crafty integration both make a direct TCP/HTTP
+# connection FROM this container TO your backend (Minecraft server / Crafty).
+# On the default "bridge" network, Docker's embedded DNS does NOT resolve
+# other containers by name (e.g. "crafty") unless they share a custom
+# user-defined network with this one — so a backend like "crafty:25565" will
+# simply never come up healthy, no matter how correct your setup is.
+#
+# Fix ONE of the following:
+#   1. Set `network_mode: host` below (simplest — this container then behaves
+#      like a normal process on the LAN and can reach anything by IP or
+#      hostname the host itself can reach), OR
+#   2. Put this container on the SAME user-defined Docker network as your
+#      Minecraft/Crafty containers, OR
+#   3. Always use routable LAN IPs (e.g. 192.168.1.50:25565) instead of
+#      Docker container names in route "Backend" fields and CRAFTY_URL.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -11,9 +28,15 @@ services:
     container_name: mc-router-ui
     restart: unless-stopped
 
-    ports:
-      - "${MC_PORT:-25565}:25565"   # Minecraft — must be reachable via port-forwarding/DynDNS
-      - "${UI_PORT:-8090}:8000"     # Web UI — place behind NPM/Cloudflare Tunnel
+    # Recommended: host networking so this container can reach LAN/Docker
+    # backends the same way the Unraid host itself can. Comment this out and
+    # uncomment the `ports:` block below only if you've put this container on
+    # the same custom network as every backend it needs to reach.
+    network_mode: host
+
+    # ports:
+    #   - "${MC_PORT:-25565}:25565"   # Minecraft — must be reachable via port-forwarding/DynDNS
+    #   - "${UI_PORT:-8090}:8000"     # Web UI — place behind NPM/Cloudflare Tunnel
 
     environment:
       # ── mc-router ─────────────────────────────────────────────────────────
@@ -42,6 +65,10 @@ services:
       CRAFTY_API_KEY:       ${CRAFTY_API_KEY:-}
       # Path to Crafty servers directory (for server.properties editing)
       CRAFTY_SERVERS_DIR:   ${CRAFTY_SERVERS_DIR:-}
+      # Self-hosted Crafty almost always uses a self-signed TLS certificate.
+      # Set to "true" if CRAFTY_URL is on your trusted local network — leave
+      # unset/false if CRAFTY_URL points anywhere outside your LAN.
+      CRAFTY_INSECURE_SKIP_VERIFY: ${CRAFTY_INSECURE_SKIP_VERIFY:-}
 
     volumes:
       - mc-router-ui-data:/data   # SQLite DB + persistence

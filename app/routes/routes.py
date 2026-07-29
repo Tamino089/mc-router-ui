@@ -75,16 +75,17 @@ async def _trigger_health_check(route_id: int, backend: str):
         parts = backend.rsplit(":", 1)
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 25565
-        healthy, latency = await asyncio.to_thread(tcp_check, host, port, 3.0)
+        healthy, latency, error = await asyncio.to_thread(tcp_check, host, port, 3.0)
         with get_db() as con:
             con.execute(
-                """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at)
-                   VALUES (?, ?, ?, datetime('now'))
+                """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at, error)
+                   VALUES (?, ?, ?, datetime('now'), ?)
                    ON CONFLICT(route_id) DO UPDATE SET
                        healthy=excluded.healthy,
                        latency_ms=excluded.latency_ms,
-                       checked_at=excluded.checked_at""",
-                (route_id, int(healthy), latency if healthy else None),
+                       checked_at=excluded.checked_at,
+                       error=excluded.error""",
+                (route_id, int(healthy), latency if healthy else None, error or None),
             )
             con.commit()
     except Exception:

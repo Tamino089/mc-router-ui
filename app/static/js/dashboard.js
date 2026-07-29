@@ -478,8 +478,14 @@ async function refreshHealth() {
              sparkline = spark;
           }
           
-          if (dot) dot.className  = `dot ${d.healthy ? 'dot-green' : 'dot-red'}`;
-          if (text) text.textContent = d.healthy ? 'Reachable' : 'Offline';
+          if (dot) {
+            dot.className = `dot ${d.healthy ? 'dot-green' : 'dot-red'}`;
+            if (!d.healthy && d.error) dot.title = d.error; else dot.removeAttribute('title');
+          }
+          if (text) {
+            text.textContent = d.healthy ? 'Reachable' : (d.error ? `Offline — ${d.error}` : 'Offline');
+            if (!d.healthy && d.error) text.title = d.error; else text.removeAttribute('title');
+          }
           
           if (sparkline && h_data.success && h_data.history) {
              sparkline.innerHTML = h_data.history.map(pt => {
@@ -696,7 +702,7 @@ async function loadCraftyServers() {
       const portHealth = s.running
         ? (s.port_reachable
             ? `<span class="dot dot-green" style="display:inline-block;margin-left:6px;" title="Port reachable"></span>`
-            : `<span class="dot dot-warn" style="display:inline-block;margin-left:6px;" title="Port unreachable"></span>`)
+            : `<span class="dot dot-warn" style="display:inline-block;margin-left:6px;" title="${esc(s.port_error || 'Port unreachable')}"></span>`)
         : '';
 
       return `
