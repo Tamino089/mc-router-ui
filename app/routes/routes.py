@@ -122,25 +122,43 @@ async def add_route(request: Request):
             # DNS-skip logic in sync_dns_for_route() work correctly.
             hostname = raw_hostname or "__default__"
         else:
-            hostname = await cloudflare.resolve_hostname(raw_hostname)
-            if not hostname:
-                return JSONResponse(
-                    {"success": False, "error": "Could not resolve hostname: no Cloudflare zone configured. Enter a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
-                    status_code=400,
-                )
+            # If hostname contains dots, treat as full FQDN — no Cloudflare needed
+            if "." in raw_hostname:
+                hostname = raw_hostname
+                # Validate FQDN format
+                if not HOSTNAME_RE.match(hostname):
+                    return JSONResponse(
+                        {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
+                        status_code=400,
+                    )
+                # Skip Cloudflare zone validation for full FQDNs
+            else:
+                # Subdomain-only — requires Cloudflare to resolve
+                cf_token, _, _ = await cloudflare.get_cf_config()
+                if not cf_token:
+                    return JSONResponse(
+                        {"success": False, "error": "Cloudflare not configured. Provide a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
+                        status_code=400,
+                    )
+                hostname = await cloudflare.resolve_hostname(raw_hostname)
+                if not hostname:
+                    return JSONResponse(
+                        {"success": False, "error": "Could not resolve hostname via Cloudflare."},
+                        status_code=400,
+                    )
 
-            # ── Strict hostname validation ────────────────────────────────────
-            if not HOSTNAME_RE.match(hostname):
-                return JSONResponse(
-                    {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
-                    status_code=400,
-                )
+                # Strict hostname validation for resolved name
+                if not HOSTNAME_RE.match(hostname):
+                    return JSONResponse(
+                        {"success": False, "error": "Resolved hostname is not a valid FQDN"},
+                        status_code=400,
+                    )
 
-            valid, v_err = await cloudflare.validate_domain(hostname, False)
-            if not valid:
-                return JSONResponse({"success": False, "error": v_err}, status_code=400)
+                valid, v_err = await cloudflare.validate_domain(hostname, False)
+                if not valid:
+                    return JSONResponse({"success": False, "error": v_err}, status_code=400)
 
-            # ── Block Docker-managed hostnames ────────────────────────────────
+            # Block Docker-managed hostnames (for both FQDN and resolved)
             if await docker_watcher.is_docker_managed(hostname):
                 return JSONResponse(
                     {"success": False, "error": f"'{hostname}' is managed by a Docker container label and cannot be edited here"},
@@ -236,12 +254,49 @@ async def edit_route(request: Request, route_id: int):
     is_def = bool(data.get("is_default", False))
 
     hostname = raw_hostname
-    if not is_def and hostname:
-        hostname = await cloudflare.resolve_hostname(raw_hostname)
-        if not hostname:
+    if is_def:
+        hostname = raw_hostname or "__default__"
+    elif hostname:
+        # If hostname contains dots, treat as full FQDN — no Cloudflare needed
+        if "." in raw_hostname:
+            hostname = raw_hostname
+            # Validate FQDN format
+            if not HOSTNAME_RE.match(hostname):
+                return JSONResponse(
+                    {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
+                    status_code=400,
+                )
+        else:
+            # Subdomain-only — requires Cloudflare to resolve
+            cf_token, _, _ = await cloudflare.get_cf_config()
+            if not cf_token:
+                return JSONResponse(
+                    {"success": False, "error": "Cloudflare not configured. Provide a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
+                    status_code=400,
+                )
+            hostname = await cloudflare.resolve_hostname(raw_hostname)
+            if not hostname:
+                return JSONResponse(
+                    {"success": False, "error": "Could not resolve hostname via Cloudflare."},
+                    status_code=400,
+                )
+
+            # Strict hostname validation for resolved name
+            if not HOSTNAME_RE.match(hostname):
+                return JSONResponse(
+                    {"success": False, "error": "Resolved hostname is not a valid FQDN"},
+                    status_code=400,
+                )
+
+            valid, v_err = await cloudflare.validate_domain(hostname, False)
+            if not valid:
+                return JSONResponse({"success": False, "error": v_err}, status_code=400)
+
+        # Block Docker-managed hostnames (for both FQDN and resolved)
+        if await docker_watcher.is_docker_managed(hostname):
             return JSONResponse(
-                {"success": False, "error": "Could not resolve hostname: no Cloudflare zone configured. Enter a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
-                status_code=400,
+                {"success": False, "error": f"'{hostname}' is managed by a Docker container label and cannot be edited here"},
+                status_code=409,
             )
 
     # Read existing route + validate ownership + check hostname uniqueness

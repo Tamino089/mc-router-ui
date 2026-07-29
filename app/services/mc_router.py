@@ -53,10 +53,13 @@ async def router_request(method: str, path: str, **kwargs):
     return None, f"mc-router connection lost after {_MAX_RETRIES} retries: {last_err}"
 
 
-async def push_route(hostname: str, backend: str) -> Optional[str]:
-    _, err = await router_request(
-        "post", "/routes", json={"serverAddress": hostname, "backend": backend}
-    )
+async def push_route(hostname: str, backend: str, retries: int = 3) -> Optional[str]:
+    for attempt in range(retries):
+        _, err = await router_request("post", "/routes", json={"serverAddress": hostname, "backend": backend})
+        if not err:
+            return None
+        if attempt < retries - 1:
+            await asyncio.sleep(0.5 * (attempt + 1))
     return err
 
 
@@ -67,8 +70,13 @@ async def delete_route(hostname: str) -> Optional[str]:
     return err
 
 
-async def push_default(backend: str) -> Optional[str]:
-    _, err = await router_request("post", "/defaultRoute", json={"backend": backend})
+async def push_default(backend: str, retries: int = 3) -> Optional[str]:
+    for attempt in range(retries):
+        _, err = await router_request("post", "/defaultRoute", json={"backend": backend})
+        if not err:
+            return None
+        if attempt < retries - 1:
+            await asyncio.sleep(0.5 * (attempt + 1))
     return err
 
 

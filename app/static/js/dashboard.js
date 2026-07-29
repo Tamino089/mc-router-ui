@@ -291,10 +291,10 @@ async function performValidation() {
     if (!res.ok) throw new Error();
     const d = await res.json();
     currentValidation = d;
-    updateValidation('val-format',  d.hostname_format.status,   d.hostname_format.message);
-    updateValidation('val-cf',      d.cf_zone.status,           d.cf_zone.message);
-    updateValidation('val-dns',     d.dns_record.status,        d.dns_record.message);
-    updateValidation('val-backend', d.backend_reachable.status, d.backend_reachable.message);
+    updateValidation('val-format',  d['val-format'].status,   d['val-format'].message);
+    updateValidation('val-cf',      d['val-cf'].status,       d['val-cf'].message);
+    updateValidation('val-dns',     d['val-dns'].status,      d['val-dns'].message);
+    updateValidation('val-backend', d['val-backend'].status,  d['val-backend'].message);
   } catch {
     ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'error', 'Validation failed.'));
   }

@@ -86,86 +86,96 @@ async def delete_cf_record(request: Request, record_id: str):
 
 
 @router.get("/api/validate-route")
-async def validate_route_live(
-    request: Request,
-    hostname: str,
-    backend: str,
-    is_default: str = "false",
-    route_id: int = None,
-):
+async def validate_route(request: Request):
+    """Live validation for route creation/edit form."""
     user = current_user(request)
     if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
 
-    is_def = is_default.lower() == "true"
-    hostname = hostname.strip().lower()
-    backend = backend.strip()
+    hostname = request.query_params.get("hostname", "").strip().lower()
+    backend = request.query_params.get("backend", "").strip()
+    is_default = request.query_params.get("is_default", "false").lower() == "true"
+    route_id = request.query_params.get("route_id", "")
 
-    # Auto-resolve subdomain-only hostname for validation
-    if not is_def and hostname and "." not in hostname:
-        resolved = await cloudflare.resolve_hostname(hostname)
-        resolved_hostname = resolved or hostname
-    else:
-        resolved_hostname = hostname
-
+    # Default response structure matching frontend expectations
     res = {
-        "hostname_format": {"status": "neutral", "message": ""},
-        "cf_zone": {"status": "neutral", "message": ""},
-        "dns_record": {"status": "neutral", "message": ""},
-        "backend_reachable": {"status": "neutral", "message": ""},
+        "val-format": {"status": "neutral", "message": ""},
+        "val-cf": {"status": "neutral", "message": ""},
+        "val-dns": {"status": "neutral", "message": ""},
+        "val-backend": {"status": "neutral", "message": ""},
     }
 
-    # 1. Hostname Format
-    if is_def:
-        res["hostname_format"] = {"status": "success", "message": "Default route acts as a fallback for all unmatched hostnames."}
-        res["cf_zone"] = {"status": "neutral", "message": "Not applicable for default route."}
-        res["dns_record"] = {"status": "neutral", "message": "Not applicable for default route."}
+    if is_default:
+        res["val-format"] = {"status": "success", "message": "Default route — no hostname needed"}
+        res["val-cf"] = {"status": "neutral", "message": "Not applicable for default route"}
+        res["val-dns"] = {"status": "neutral", "message": "Not applicable for default route"}
     else:
+        # Hostname format validation
         if not hostname:
-            res["hostname_format"] = {"status": "error", "message": "Hostname cannot be empty."}
-        elif " " in hostname or not all(c.isalnum() or c in ".-" for c in hostname):
-            res["hostname_format"] = {"status": "error", "message": "Hostname contains invalid characters."}
+            res["val-format"] = {"status": "error", "message": "Hostname is required"}
+        elif "." not in hostname:
+            # Subdomain-only - needs Cloudflare
+            cf_token, _, _ = await cloudflare.get_cf_config()
+            if not cf_token:
+                res["val-format"] = {"status": "warning", "message": "Subdomain only — Cloudflare needed to resolve"}
+                res["val-cf"] = {"status": "error", "message": "Cloudflare not configured"}
+            else:
+                res["val-format"] = {"status": "checking", "message": "Will resolve via Cloudflare…"}
+                res["val-cf"] = {"status": "success", "message": "Cloudflare configured"}
         else:
-            res["hostname_format"] = {"status": "success", "message": f"Hostname format valid → will resolve to: {resolved_hostname}"}
+            # Full FQDN provided
+            from app.routes.routes import HOSTNAME_RE
+            if HOSTNAME_RE.match(hostname):
+                res["val-format"] = {"status": "success", "message": "Valid FQDN format"}
+                res["val-cf"] = {"status": "neutral", "message": "Not needed (full FQDN provided)"}
+            else:
+                res["val-format"] = {"status": "error", "message": "Invalid FQDN format"}
 
-            token_cf, _, _ = get_cf_config()
-            if token_cf:
-                valid, msg = await cloudflare.validate_domain(resolved_hostname, False)
-                if not valid:
-                    res["cf_zone"] = {"status": "error", "message": msg}
+        # DNS record check (only for non-default, non-docker routes)
+        if hostname and "." in hostname:
+            # Check if hostname already exists in DB
+            from app.db.database import get_db
+            with get_db() as con:
+                existing = con.execute(
+                    "SELECT id FROM routes WHERE hostname=? AND id!=?",
+                    (hostname, int(route_id) if route_id else -1)
+                ).fetchone()
+                if existing:
+                    res["val-dns"] = {"status": "error", "message": "Hostname already exists in database"}
                 else:
-                    res["cf_zone"] = {"status": "success", "message": f"Hostname '{resolved_hostname}' matches your Cloudflare zone."}
-
-                # DNS record check
-                zone_id, zerr = await cloudflare.cf_get_zone_id()
-                if not zerr and zone_id:
-                    existing_rec, _ = await cloudflare.cf_find_record(zone_id, resolved_hostname)
-                    if existing_rec:
-                        res["dns_record"] = {"status": "success", "message": f"DNS A-record already exists ({existing_rec.get('content', '?')})"}
+                    # Check Cloudflare for conflicts
+                    cf_token, _, _ = await cloudflare.get_cf_config()
+                    if cf_token:
+                        zone_id, err = await cloudflare.cf_get_zone_id()
+                        if not err:
+                            data, err = await cloudflare.cf_request("get", f"/zones/{zone_id}/dns_records", params={"type": "A", "name": hostname})
+                            if not err and data.get("result"):
+                                res["val-dns"] = {"status": "warning", "message": "DNS record already exists in Cloudflare"}
+                            else:
+                                res["val-dns"] = {"status": "success", "message": "No DNS conflict"}
+                        else:
+                            res["val-dns"] = {"status": "neutral", "message": "Could not check DNS"}
                     else:
-                        res["dns_record"] = {"status": "warning", "message": "No DNS A-record yet — will be created on save."}
+                        res["val-dns"] = {"status": "neutral", "message": "Cloudflare not configured — cannot check DNS"}
+
+    # Backend reachability check (TCP)
+    if backend:
+        try:
+            parts = backend.rsplit(":", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                host, port = parts[0], int(parts[1])
+                from app.services.health import tcp_check
+                import asyncio
+                healthy, latency = await asyncio.to_thread(tcp_check, host, port, 2.0)
+                if healthy:
+                    res["val-backend"] = {"status": "success", "message": f"Reachable ({latency}ms)"}
                 else:
-                    res["dns_record"] = {"status": "neutral", "message": "Could not check DNS records."}
+                    res["val-backend"] = {"status": "error", "message": "Backend unreachable (TCP connection failed)"}
             else:
-                res["cf_zone"] = {"status": "warning", "message": "Cloudflare integration not configured."}
-                res["dns_record"] = {"status": "neutral", "message": "Cloudflare not configured."}
-
-    # 2. Backend Format & Reachability
-    if not backend:
-        res["backend_reachable"] = {"status": "error", "message": "Backend address is required."}
+                res["val-backend"] = {"status": "error", "message": "Invalid backend format (host:port)"}
+        except Exception:
+            res["val-backend"] = {"status": "error", "message": "Backend check failed"}
     else:
-        parts = backend.rsplit(":", 1)
-        if len(parts) != 2 or not parts[1].isdigit():
-            res["backend_reachable"] = {"status": "error", "message": "Backend must be in format host:port."}
-        else:
-            import asyncio
-            from app.services.health import tcp_check
-            host, port = parts[0], int(parts[1])
-            # Run blocking TCP check in a thread so we don't stall the event loop
-            healthy, _ = await asyncio.to_thread(tcp_check, host, port, 3.0)
-            if healthy:
-                res["backend_reachable"] = {"status": "success", "message": "Backend is reachable via TCP."}
-            else:
-                res["backend_reachable"] = {"status": "warning", "message": "Backend is unreachable right now (TCP connect failed). You can still save — the route will retry automatically."}
+        res["val-backend"] = {"status": "error", "message": "Backend is required"}
 
-    return res
+    return {"success": True, **res}
