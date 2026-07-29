@@ -17,6 +17,7 @@ async def change_password(
     request: Request,
     current_password: str = Form(...),
     new_password: str = Form(...),
+    confirm_password: str = Form(...),
 ):
     user = current_user(request)
     if not user:
@@ -24,6 +25,8 @@ async def change_password(
 
     if len(new_password) < 6:
         return RedirectResponse(url="/?pw_error=Password must be at least 6 characters&tab=settings", status_code=303)
+    if new_password != confirm_password:
+        return RedirectResponse(url="/?pw_error=New passwords do not match&tab=settings", status_code=303)
 
     with get_db() as con:
         r_user = con.execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone()

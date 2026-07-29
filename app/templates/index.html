@@ -195,7 +195,7 @@ window.MC_UI_CONFIG = {
         </thead>
         <tbody>
           {% for r in routes %}
-          <tr id="row-{{ r.id }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}">
+          <tr id="row-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}">
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
                 <span class="mono text-white">{{ r.hostname if r.hostname != '__default__' else '*' }}</span>
@@ -223,9 +223,9 @@ window.MC_UI_CONFIG = {
               </div>
             </td>
             <td>
-              <div class="health-cell" id="health-cell-{{ r.id }}" data-route-id="{{ r.id }}">
-                <div class="dot {% if r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id }}"></div>
-                <span class="health-label" id="health-text-{{ r.id }}">{% if r.healthy %}Reachable{% else %}Offline{% endif %}</span>
+              <div class="health-cell" id="health-cell-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-route-id="{{ r.id or '' }}">
+                <div class="dot {% if r.id is none %}dot-gray{% elif r.healthy %}dot-green{% else %}dot-red{% endif %}" id="health-dot-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}"></div>
+                <span class="health-label" id="health-text-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}">{% if r.id is none %}Managed by Docker{% elif r.healthy %}Reachable{% else %}Offline{% endif %}</span>
               </div>
             </td>
             <td>

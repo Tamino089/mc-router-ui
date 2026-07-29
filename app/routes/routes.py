@@ -47,6 +47,13 @@ def _valid_ip_port(s: str) -> bool:
         return False
 
 
+def _as_bool(value) -> bool:
+    """Normalize JSON booleans and HTML form checkbox values."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "on", "yes"}
+
+
 async def _get_form_or_json(request: Request) -> dict:
     """Extract form data from either JSON body or form-encoded POST."""
     content_type = request.headers.get("content-type", "")
@@ -95,7 +102,7 @@ async def add_route(request: Request):
     data = await _get_form_or_json(request)
     raw_hostname = data.get("hostname", "").strip().lower()
     backend = data.get("backend", "").strip()
-    is_def = bool(data.get("is_default", False))
+    is_def = _as_bool(data.get("is_default", False))
 
     if not backend:
         return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
@@ -251,7 +258,7 @@ async def edit_route(request: Request, route_id: int):
     data = await _get_form_or_json(request)
     raw_hostname = data.get("hostname", "").strip().lower()
     backend = data.get("backend", "").strip()
-    is_def = bool(data.get("is_default", False))
+    is_def = _as_bool(data.get("is_default", False))
 
     hostname = raw_hostname
     if is_def:

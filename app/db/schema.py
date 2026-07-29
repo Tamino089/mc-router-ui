@@ -155,13 +155,9 @@ def init_db() -> str:
         )
         con.execute("DELETE FROM settings WHERE key='admin_password'")
     else:
-        if config.ADMIN_PASS:
-            logger.info("ADMIN_PASSWORD env variable is set. Syncing admin password hash...")
-            hashed = hash_password(config.ADMIN_PASS)
-            con.execute(
-                "UPDATE users SET password_hash=? WHERE LOWER(username)=LOWER(?)",
-                (hashed, config.ADMIN_USER),
-            )
+        # ADMIN_PASSWORD bootstraps a missing admin only. Reapplying it here
+        # would overwrite passwords changed through the UI on every restart.
+        logger.info("Existing admin account retained; ADMIN_PASSWORD is bootstrap-only.")
 
     # ── Assign ownerless routes to admin ──────────────────────────────────────
     admin_row = con.execute(

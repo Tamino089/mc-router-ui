@@ -415,6 +415,7 @@ async function refreshHealth() {
     const rows = document.querySelectorAll('[id^="row-"]');
     await Promise.all([...rows].map(async row => {
       const id = row.id.replace('row-', '');
+      if (!/^\d+$/.test(id)) return;
       try {
         const [r, h_req] = await Promise.all([
           fetch(`/api/health/${id}`),
@@ -652,7 +653,7 @@ async function loadCraftyServers() {
       const portHealth = s.running
         ? (s.port_reachable
             ? `<span class="dot dot-green" style="display:inline-block;margin-left:6px;" title="Port reachable"></span>`
-            : `<span class="dot dot-yellow" style="display:inline-block;margin-left:6px;" title="Port unreachable"></span>`)
+            : `<span class="dot dot-warn" style="display:inline-block;margin-left:6px;" title="Port unreachable"></span>`)
         : '';
 
       return `

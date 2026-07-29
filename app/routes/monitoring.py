@@ -16,18 +16,42 @@ from app.services.health import tcp_check
 router = APIRouter()
 
 
-@router.get("/api/health/{route_id}")
-async def check_route_health(request: Request, route_id: int):
+def _visible_route(request: Request, route_id: int):
+    """Return a route only when the current user may inspect it."""
     user = current_user(request)
     if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     with get_db() as con:
-        r_row = con.execute("SELECT backend FROM routes WHERE id=?", (route_id,)).fetchone()
-        if not r_row:
-            return JSONResponse({"error": "Route not found"}, status_code=404)
+        route = con.execute(
+            "SELECT id, backend, owner_id FROM routes WHERE id=?",
+            (route_id,),
+        ).fetchone()
 
-        backend = r_row["backend"]
+    if not route:
+        return None, JSONResponse({"error": "Route not found"}, status_code=404)
+    if (
+        user.get("role") != "admin"
+        and "see_all_routes" not in user_has_perm_set(user)
+        and route["owner_id"] != user["id"]
+    ):
+        return None, JSONResponse({"error": "Forbidden"}, status_code=403)
+    return route, None
+
+
+def user_has_perm_set(user: dict) -> set:
+    """Load permissions once for route visibility checks."""
+    from app.db.schema import get_user_perms
+
+    return get_user_perms(user["id"])
+
+
+@router.get("/api/health/{route_id}")
+async def check_route_health(request: Request, route_id: int):
+    r_row, error = _visible_route(request, route_id)
+    if error:
+        return error
+    backend = r_row["backend"]
 
     parts = backend.rsplit(":", 1)
     if len(parts) == 2 and parts[1].isdigit():
@@ -59,17 +83,33 @@ async def check_route_health(request: Request, route_id: int):
 
 
 @router.get("/api/router-status")
-async def check_router_status():
+async def check_router_status(request: Request):
     """Check if the backend mc-router binary is answering."""
+    if not current_user(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     _, err = await mc_router.router_request("get", "/routes")
     return {"online": err is None, "error": err}
 
 
 @router.get("/api/connections")
-async def get_all_connections():
+async def get_all_connections(request: Request):
     """Get active connections for all routes."""
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     conns = await mc_router.get_connections()
-    return conns
+    if user.get("role") == "admin" or "see_all_routes" in user_has_perm_set(user):
+        return conns
+
+    with get_db() as con:
+        visible = {
+            row["hostname"]
+            for row in con.execute(
+                "SELECT hostname FROM routes WHERE owner_id=?",
+                (user["id"],),
+            ).fetchall()
+        }
+    return {hostname: count for hostname, count in conns.items() if hostname in visible}
 
 
 @router.get("/api/ports/used")
@@ -102,9 +142,9 @@ async def get_used_ports(request: Request):
 @router.get("/api/health/{route_id}/history")
 async def get_route_health_history(request: Request, route_id: int):
     """Get the last 60 health check records (up to 30 mins) for a sparkline."""
-    user = current_user(request)
-    if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    _, error = _visible_route(request, route_id)
+    if error:
+        return error
 
     with get_db() as con:
         # Get the last 60 records for this route, order chronologically
