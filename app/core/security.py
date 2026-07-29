@@ -43,4 +43,25 @@ def verify_password(password: str, hashed: str) -> bool:
 # ── Session helpers ───────────────────────────────────────────────────────────
 
 def current_user(request: Request) -> dict | None:
-    return request.session.get("user")
+    session_user = request.session.get("user")
+    if not isinstance(session_user, dict) or not session_user.get("id"):
+        return None
+
+    # Session cookies prove continuity, but the database remains authoritative
+    # for whether the account still exists and which role it currently has.
+    from app.db.database import get_db
+
+    with get_db() as con:
+        row = con.execute(
+            "SELECT id, username, role FROM users WHERE id=?",
+            (session_user["id"],),
+        ).fetchone()
+
+    if not row:
+        request.session.clear()
+        return None
+
+    user = dict(row)
+    if user != session_user:
+        request.session["user"] = user
+    return user
