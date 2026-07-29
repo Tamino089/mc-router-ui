@@ -81,7 +81,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
     )
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="/login", status_code=303)

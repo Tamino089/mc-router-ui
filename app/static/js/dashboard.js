@@ -489,6 +489,10 @@ async function refreshHealth() {
 async function checkRouterStatus() {
   try {
     const r = await fetch('/api/router-status');
+    if (r.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
     const d = await r.json();
     const dot  = document.getElementById('router-dot');
     const text = document.getElementById('router-status-text');
@@ -1123,8 +1127,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     evtSource.onerror = () => {
-      // Reconnect automatically — EventSource does this by default
-      console.debug('[SSE] Connection error, reconnecting...');
+      // A session expiry must not leave EventSource reconnecting forever.
+      if (evtSource.readyState === EventSource.CLOSED) {
+        window.location.href = '/login';
+      } else {
+        console.debug('[SSE] Connection error, reconnecting...');
+      }
     };
   }
 
