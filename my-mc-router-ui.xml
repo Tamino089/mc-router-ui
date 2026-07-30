@@ -3,34 +3,31 @@
   <Name>MC-Router-UI</Name>
   <Repository>ghcr.io/tamino089/mc-router-ui:latest</Repository>
   <Registry/>
-  <Network>bridge</Network>
-  <Shell>bash</Shell>
+  <Network>host</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Tamino089/mc-router-ui/issues</Support>
+  <Support/>
   <Project>https://github.com/Tamino089/mc-router-ui</Project>
-  <Overview>Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS and Crafty Controller integration. mc-router and the web UI run together in a single container via supervisord.</Overview>
-  <Category>Network:Proxy: GameServers:</Category>
+  <Overview>
+Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS and Crafty Controller integration. mc-router and the web UI run together in a single container via supervisord.
+
+IMPORTANT — networking: this template defaults to Host networking. Health checks and the Crafty integration connect directly from this container to your Minecraft/Crafty backends; on the default Bridge network, Docker cannot resolve other containers by name (e.g. "crafty"), which is the most common cause of routes never showing "Reachable". Only switch to Bridge if you place this container on the same custom Docker network as every backend it needs to reach, or always use LAN IPs instead of container names as your route backends.
+  </Overview>
+  <Category>Network:Proxy Status:Stable GameServers:</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/docs/mc-router.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
-  <Description>Minecraft reverse-proxy web UI with Cloudflare DDNS, Crafty Controller integration, and Docker label discovery.</Description>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Minecraft reverse-proxy web UI with Cloudflare DDNS and Crafty Controller integration.</Description>
   <Networking>
-    <Mode>bridge</Mode>
-    <Publish>
-      <Port>
-        <HostPort>25565</HostPort>
-        <ContainerPort>25565</ContainerPort>
-        <Protocol>tcp</Protocol>
-      </Port>
-      <Port>
-        <HostPort>8090</HostPort>
-        <ContainerPort>8000</ContainerPort>
-        <Protocol>tcp</Protocol>
-      </Port>
-    </Publish>
+    <Mode>host</Mode>
+    <Publish/>
   </Networking>
   <Data>
     <Volume>
@@ -73,7 +70,7 @@
       <Display>always</Display>
       <Required>true</Required>
       <Mask>false</Mask>
-      <Description>Minecraft ingress port. Expose this port in the template networking settings.</Description>
+      <Description>Minecraft ingress port (internal, exposed directly on the host with Host networking).</Description>
     </Variable>
     <Variable>
       <Value>8080</Value>
