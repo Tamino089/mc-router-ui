@@ -144,10 +144,12 @@ def get_server_properties_path(
 ) -> Optional[Path]:
     """Locate server.properties for a given server ID or name.
 
-    Result is cached in-memory keyed by server_id to avoid repeated
-    filesystem globbing on every port-change request.
+    Positive results are cached in-memory keyed by server_id to avoid
+    repeated filesystem globbing on every port-change request.
+    Negative results (None) are NOT cached so that fixing a volume
+    mount takes effect without a container restart.
     """
-    if server_id in _prop_path_cache:
+    if server_id in _prop_path_cache and _prop_path_cache[server_id] is not None:
         cached = _prop_path_cache[server_id]
         logger.debug("get_server_properties_path: cache hit for %s -> %s", server_id, cached)
         return cached
@@ -231,7 +233,6 @@ def get_server_properties_path(
         logger.debug("get_server_properties_path: SERVER_PROPERTIES_PATH=%s does not exist", env_exact)
 
     logger.warning("get_server_properties_path: no match found for server '%s'", server_id)
-    _prop_path_cache[server_id] = None
     return None
 
 

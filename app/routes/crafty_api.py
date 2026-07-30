@@ -166,7 +166,8 @@ async def crafty_change_port(
     with get_db() as con:
         chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
         chost = chost_row[0] if chost_row else ""
-        old_bk = f"{chost}:{server_data.get('server_port')}"
+        old_port = server_data.get("server_port") or server_data.get("port")
+        old_bk = f"{chost}:{old_port}"
         new_bk = f"{chost}:{port}"
         impacted = con.execute(
             "SELECT id, hostname, is_default FROM routes WHERE backend=?", (old_bk,)

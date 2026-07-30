@@ -53,6 +53,18 @@ function showToast(message, type = 'info', duration = 4000) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SKELETON LOADING ROWS
+// ══════════════════════════════════════════════════════════════════════════════
+function skeletonRows(widths) {
+  const rows = [];
+  for (let i = 0; i < 4; i++) {
+    const cells = widths.map(w => `<td><div class="skeleton-cell w${w}"></div></td>`).join('');
+    rows.push(`<tr class="skeleton-row">${cells}</tr>`);
+  }
+  return rows.join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // COPY TO CLIPBOARD
 // ══════════════════════════════════════════════════════════════════════════════
 async function copyToClipboard(text, btn) {
@@ -543,27 +555,13 @@ async function refreshHealth() {
       const id = row.id.replace('row-', '');
       if (!/^\d+$/.test(id)) return;
       try {
-        const [r, h_req] = await Promise.all([
-          fetch(`/api/health/${id}`),
-          fetch(`/api/health/${id}/history`)
-        ]);
+        const r = await fetch(`/api/health/${id}`);
         const d = await r.json();
-        const h_data = await h_req.json();
         
         const healthCell = document.getElementById(`health-cell-${id}`);
         if (healthCell) {
           let dot = document.getElementById(`health-dot-${id}`);
           let text = document.getElementById(`health-text-${id}`);
-          let sparkline = document.getElementById(`sparkline-${id}`);
-          
-          if (!sparkline) {
-             const spark = document.createElement('div');
-             spark.id = `sparkline-${id}`;
-             spark.className = 'sparkline-container';
-             spark.style = 'margin-left:auto; width:60px; height:20px; display:flex; align-items:flex-end; gap:1px;';
-             healthCell.appendChild(spark);
-             sparkline = spark;
-          }
           
           if (dot) {
             dot.className = `dot ${d.healthy ? 'dot-green' : 'dot-red'}`;
@@ -572,16 +570,6 @@ async function refreshHealth() {
           if (text) {
             text.textContent = d.healthy ? 'Reachable' : (d.error ? `Offline — ${d.error}` : 'Offline');
             if (!d.healthy && d.error) text.title = d.error; else text.removeAttribute('title');
-          }
-          
-          if (sparkline && h_data.success && h_data.history) {
-             sparkline.innerHTML = h_data.history.map(pt => {
-                const latency = pt.latency_ms || 100;
-                const h = pt.healthy ? Math.max(10, Math.min(100, (latency / 100) * 100)) : 100;
-                const color = pt.healthy ? 'var(--green)' : 'var(--danger)';
-                const title = pt.healthy ? `Reachable: ${pt.latency_ms}ms` : 'Offline';
-                return `<div style="width:2px; height:${h}%; background:${color}; opacity:0.8; border-radius:1px;" title="${title}"></div>`;
-             }).join('');
           }
         }
       } catch {
@@ -603,44 +591,14 @@ async function refreshHealth() {
       });
       total += count;
     });
-    const totalEl = document.getElementById('total-conns');
-    if (totalEl) totalEl.textContent = total;
+    const tabCount = document.getElementById('tab-count-routes');
+    if (tabCount) tabCount.textContent = total;
 
   } catch {
     showToast('Failed to refresh health status', 'error');
   }
 
   if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
-}
-
-// Router status polling
-async function checkRouterStatus() {
-  try {
-    const r = await fetch('/api/router-status');
-    if (r.status === 401) {
-      window.location.href = '/login';
-      return;
-    }
-    const d = await r.json();
-    const dot  = document.getElementById('router-dot');
-    const text = document.getElementById('router-status-text');
-    if (!dot || !text) return;
-    if (d.online) {
-      dot.className  = 'dot dot-green';
-      text.textContent = 'mc-router online';
-      text.style.color = 'var(--green)';
-    } else {
-      dot.className  = 'dot dot-red';
-      text.textContent = 'mc-router offline';
-      text.style.color = 'var(--danger)';
-    }
-  } catch {
-    const text = document.getElementById('router-status-text');
-    if (text) {
-      text.textContent = 'mc-router unreachable';
-      text.style.color = 'var(--danger)';
-    }
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -651,7 +609,7 @@ async function loadCfRecords() {
   const countEl = document.getElementById('cf-record-count');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="5"><span class="spinner"></span> Loading DNS records…</td></tr>';
+  tbody.innerHTML = skeletonRows([120,120,48,100,80]);
 
   try {
     const r = await fetch('/api/cf/records');
@@ -757,7 +715,7 @@ async function loadCraftyServers() {
   const countEl = document.getElementById('crafty-server-count');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="6"><span class="spinner"></span> Loading servers…</td></tr>';
+  tbody.innerHTML = skeletonRows([80,64,80,120,64,80]);
 
   try {
     const r = await fetch('/api/crafty/servers');
@@ -918,7 +876,7 @@ async function loadUsersList() {
   const tbody = document.getElementById('users-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr class="loading-row"><td colspan="5"><span class="spinner"></span> Loading users…</td></tr>';
+  tbody.innerHTML = skeletonRows([120,64,100,80,80]);
 
   try {
     const r = await fetch('/api/users');
@@ -1206,10 +1164,6 @@ document.addEventListener('DOMContentLoaded', () => {
       switchTab(tabs[next].id.replace('tab-btn-', ''));
     });
   });
-  // Check router status immediately and every 30s
-  checkRouterStatus();
-  setInterval(checkRouterStatus, 30000);
-
   // Handle ?tab= URL parameter (e.g. after settings redirect)
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab');
@@ -1259,26 +1213,8 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           total += count;
         });
-        const totalEl = document.getElementById('total-conns');
+        const totalEl = document.getElementById('tab-count-routes');
         if (totalEl) totalEl.textContent = total;
-      } catch {}
-    });
-
-    evtSource.addEventListener('router-status', (e) => {
-      try {
-        const d = JSON.parse(e.data);
-        const dot = document.getElementById('router-dot');
-        const text = document.getElementById('router-status-text');
-        if (!dot || !text) return;
-        if (d.online) {
-          dot.className = 'dot dot-green';
-          text.textContent = 'mc-router online';
-          text.style.color = 'var(--green)';
-        } else {
-          dot.className = 'dot dot-red';
-          text.textContent = 'mc-router offline';
-          text.style.color = 'var(--danger)';
-        }
       } catch {}
     });
 

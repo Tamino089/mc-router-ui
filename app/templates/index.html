@@ -34,10 +34,9 @@ window.MC_UI_CONFIG = {
      ══════════════════════════════════════════════════════════════════════════ -->
 <header>
   <div class="header-left">
-    <h1 class="brand">MC Router UI</h1>
+    <a href="/" class="brand">MC Router UI</a>
   </div>
 
-  <!-- Tab navigation -->
   <div class="header-center">
     <div class="tabs-bar" id="main-tabs-bar" role="tablist">
       <button class="tab-btn active" id="tab-btn-routes" role="tab" aria-selected="true" aria-controls="tab-routes" tabindex="0" onclick="switchTab('routes')">
@@ -45,7 +44,7 @@ window.MC_UI_CONFIG = {
           <path d="M3 11l19-9-9 19-2-8-8-2z"/>
         </svg>
         Router
-        <span class="tab-count" id="tab-count-routes">{{ routes|length }}</span>
+        <span class="tab-count" id="tab-count-routes">{{ total_connections }}</span>
       </button>
 
       <button class="tab-btn" id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="-1" onclick="switchTab('settings')">
@@ -58,19 +57,6 @@ window.MC_UI_CONFIG = {
   </div>
 
   <div class="header-right">
-    <div class="status-pill" title="Total active player connections">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-      <span class="val" id="total-conns">{{ total_connections }}</span>
-    </div>
-
-    <div class="router-status">
-      <div class="dot dot-gray" id="router-dot"></div>
-      <span id="router-status-text" style="font-size:12px;color:var(--muted);">Checking…</span>
-    </div>
-
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
       <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
@@ -83,15 +69,13 @@ window.MC_UI_CONFIG = {
     <div class="user-chip">
       <span class="user-name">{{ current_user.username }}</span>
       <span class="role-badge role-{{ current_user.role }}">{{ 'Admin' if current_user.role == 'admin' else 'User' }}</span>
-      <div class="user-avatar">{{ current_user.username[:2].upper() }}</div>
     </div>
 
-    <form method="post" action="/logout" style="display:inline;">
-      <button type="submit" class="btn btn-ghost btn-sm">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-      </svg>
-      Sign out
+    <form method="post" action="/logout">
+      <button type="submit" class="btn-logout" title="Sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
       </button>
     </form>
   </div>
@@ -293,7 +277,7 @@ window.MC_UI_CONFIG = {
           </tr>
         </thead>
         <tbody id="cf-tbody">
-          <tr class="loading-row"><td colspan="5"><span class="spinner"></span> Loading DNS records…</td></tr>
+          <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w160" style="margin:0 auto;"></div></td></tr>
         </tbody>
       </table>
       {% endif %}
@@ -335,7 +319,7 @@ window.MC_UI_CONFIG = {
           </tr>
         </thead>
         <tbody id="crafty-tbody">
-          <tr class="loading-row"><td colspan="6"><span class="spinner"></span> Loading servers…</td></tr>
+          <tr class="skeleton-row"><td colspan="6"><div class="skeleton-cell w120" style="margin:0 auto;"></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -517,7 +501,7 @@ window.MC_UI_CONFIG = {
             </tr>
           </thead>
           <tbody id="users-tbody">
-            <tr class="loading-row"><td colspan="5"><span class="spinner"></span> Loading users…</td></tr>
+            <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w120" style="margin:0 auto;"></div></td></tr>
           </tbody>
         </table>
       </div>

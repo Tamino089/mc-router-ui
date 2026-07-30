@@ -140,20 +140,18 @@ header {
   padding: 0 24px;
 }
 
-.header-left { display: flex; align-items: center; gap: 12px; }
+.header-left { display: flex; align-items: center; }
 
 .brand {
   font-size: 16px; font-weight: 700; color: var(--text);
-  letter-spacing: -0.3px; line-height: 1; margin: 0;
+  letter-spacing: -0.3px; text-decoration: none;
 }
+.brand:hover { color: var(--accent); }
 
-/* Header center: tabs */
 .header-center { display: flex; align-items: center; }
 
-/* Header right */
-.header-right { display: flex; align-items: center; gap: 8px; }
+.header-right { display: flex; align-items: center; gap: 6px; }
 
-/* Theme toggle */
 .theme-toggle {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px;
@@ -171,46 +169,27 @@ header {
 [data-theme="light"] .theme-toggle .sun-icon { display: block; }
 [data-theme="light"] .theme-toggle .moon-icon { display: none; }
 
-/* Status pill */
-.status-pill {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 11px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  font-size: 12px;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.status-pill .val { color: var(--text); font-weight: 600; font-size: 13px; }
-
-/* Router status */
-.router-status {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 11px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  font-size: 12px;
-}
-
-/* User chip */
 .user-chip {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 4px 4px 10px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-radius: var(--r-sm);
   font-size: 13px;
 }
 .user-name { font-weight: 600; color: var(--text); }
-.user-avatar {
-  width: 26px; height: 26px; border-radius: 50%;
+
+.btn-logout {
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #000;
-  background: var(--accent);
+  width: 34px; height: 34px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer; color: var(--muted);
+  transition: all 0.15s ease;
   flex-shrink: 0;
 }
+.btn-logout:hover { color: var(--danger); border-color: var(--danger-glow); background: var(--danger-dim); }
 
 /* ── Status dots ────────────────────────────────────────────────────────────── */
 .dot {
@@ -558,6 +537,25 @@ main {
   vertical-align: middle; margin-right: 8px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Skeleton loading ───────────────────────────────────────────────────────── */
+.skeleton-row td { padding: 18px 16px !important; }
+.skeleton-cell {
+  height: 16px; background: var(--border);
+  border-radius: 4px; animation: sk-shimmer 1.5s infinite;
+}
+.skeleton-cell.w32  { width: 32px; }
+.skeleton-cell.w48  { width: 48px; }
+.skeleton-cell.w64  { width: 64px; }
+.skeleton-cell.w80  { width: 80px; }
+.skeleton-cell.w100 { width: 100px; }
+.skeleton-cell.w120 { width: 120px; }
+.skeleton-cell.w160 { width: 160px; }
+@keyframes sk-shimmer {
+  0%   { opacity: 0.4; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.4; }
+}
 
 /* ══════════════════════════════════════════════════════════════════════════════
    MODALS
@@ -1018,8 +1016,6 @@ main {
 }
 
 @media (max-width: 600px) {
-  .status-pill { display: none; }
-
   .user-name { display: none; }
 }
 
@@ -1044,7 +1040,6 @@ main {
   .card { overflow-x: auto; }
   .data-table { min-width: 760px; }
   .header-right { gap: 4px; }
-  .router-status { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1056,24 +1051,4 @@ main {
   }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   SPARKLINES (Health Hub)
-   ══════════════════════════════════════════════════════════════════════════════ */
-.sparkline-container {
-  display: flex; align-items: flex-end; gap: 2px;
-  height: 24px; width: 120px;
-}
-.sparkline-bar {
-  flex: 1; background: var(--green);
-  border-radius: 2px 2px 0 0;
-  min-height: 2px;
-  transition: height 0.2s ease;
-  opacity: 0.8;
-}
-.sparkline-bar.down { background: var(--danger); }
-.sparkline-bar.high-latency { background: var(--warn); }
-.sparkline-label {
-  font-size: 10px; color: var(--muted);
-  margin-top: 4px;
-  display: flex; justify-content: space-between;
-}
+
