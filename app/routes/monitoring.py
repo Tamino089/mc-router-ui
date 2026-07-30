@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.security import current_user
 from app.db.database import get_db
 from app.db.schema import user_has_perm
-from app.services import mc_router
+from app.services import crafty, mc_router
 from app.services.health import tcp_check
 
 router = APIRouter()
@@ -140,7 +140,6 @@ async def get_used_ports(request: Request):
 
     # If the user has permission, add crafty ports
     if user.get("role") == "admin" or user_has_perm(user, "see_servers"):
-        from app.services import crafty
         data, err = await crafty.crafty_request("get", "/servers")
         if not err and data:
             for s in data:
