@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>MC-Router-UI</Name>
-  <Repository>mc-router-ui:latest</Repository>
+  <Repository>ghcr.io/tamino089/mc-router-ui:latest</Repository>
   <Registry/>
   <Network>host</Network>
   <MyIP/>
