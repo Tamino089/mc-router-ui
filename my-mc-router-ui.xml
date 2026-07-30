@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>MC-Router-UI</Name>
+  <Name>mc-router-ui</Name>
   <Repository>ghcr.io/tamino089/mc-router-ui:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
@@ -15,7 +15,7 @@
   <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/docs/mc-router.png</Icon>
   <TemplateURL>https://raw.githubusercontent.com/Tamino089/mc-router-ui/master/my-mc-router-ui.xml</TemplateURL>
   <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mc-router-ui" Mode="rw" Description="Container Path: /data — stores the SQLite database and persistent config." Type="Path" Display="always" Required="true" Mask="false"/>
-  <Config Name="Crafty Servers Directory (optional)" Target="/crafty/servers" Default="/mnt/user/appdata/crafty/servers" Mode="rw" Description="Container Path: /crafty/servers — mount Crafty's servers directory here to allow port changes via server.properties." Type="Path" Display="always" Required="false" Mask="false"/>
+  <Config Name="Crafty Servers Directory (optional)" Target="/crafty/servers" Default="/mnt/user/appdata/Crafty_4/servers" Mode="rw" Description="Container Path: /crafty/servers — mount Crafty's servers directory here to allow port changes via server.properties." Type="Path" Display="always" Required="false" Mask="false"/>
   <Config Name="Docker Socket (optional)" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Mount the Docker socket to enable auto-discovery of routes from container labels." Type="Path" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Minecraft Port" Target="MC_PORT" Default="25565" Description="Minecraft ingress port." Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="Admin Username" Target="ADMIN_USERNAME" Default="admin" Description="Admin account username. Created on first start only." Type="Variable" Display="always" Required="true" Mask="false"/>
