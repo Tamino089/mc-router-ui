@@ -188,7 +188,6 @@ async def add_route(request: Request):
                 dns_msg = " (DNS record created/updated)"
 
         # Step 3: Push to mc-router
-        sync_warn = ""
         if is_def:
             err = await mc_router.push_default(backend)
         else:
@@ -251,8 +250,6 @@ async def add_route(request: Request):
         await broadcast("route-change", {"action": "add", "route_id": route_id, "hostname": hostname})
 
         resp = {"success": True, "message": f"Route added successfully{dns_msg}"}
-        if sync_warn:
-            resp["warning"] = sync_warn
         return JSONResponse(resp)
 
     except Exception as e:
