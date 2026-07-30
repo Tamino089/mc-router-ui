@@ -3,204 +3,33 @@
   <Name>MC-Router-UI</Name>
   <Repository>ghcr.io/tamino089/mc-router-ui:latest</Repository>
   <Registry>https://ghcr.io</Registry>
-  <Network>host</Network>
+  <Network>bridge</Network>
   <MyIP/>
-  <Shell>sh</Shell>
+  <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support/>
+  <Support>https://github.com/Tamino089/mc-router-ui/issues</Support>
   <Project>https://github.com/Tamino089/mc-router-ui</Project>
-  <Overview>
-Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS and Crafty Controller integration. mc-router and the web UI run together in a single container via supervisord.
-
-IMPORTANT — networking: this template defaults to Host networking. Health checks and the Crafty integration connect directly from this container to your Minecraft/Crafty backends; on the default Bridge network, Docker cannot resolve other containers by name (e.g. "crafty"), which is the most common cause of routes never showing "Reachable". Only switch to Bridge if you place this container on the same custom Docker network as every backend it needs to reach, or always use LAN IPs instead of container names as your route backends.
-  </Overview>
-  <Category>Network:Proxy Status:Stable GameServers:</Category>
+  <Overview>Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS, Crafty Controller integration, and Docker label discovery. mc-router and the web UI run together in a single container via supervisord.</Overview>
+  <Category>Network:Proxy: GameServers:</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
-  <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/docs/mc-router.png</Icon>
-  <ExtraParams/>
-  <PostArgs/>
-  <CPUset/>
-  <DateInstalled/>
-  <DonateText/>
-  <DonateLink/>
-  <Description>Minecraft reverse-proxy web UI with Cloudflare DDNS and Crafty Controller integration.</Description>
-  <Networking>
-    <Mode>host</Mode>
-    <Publish/>
-  </Networking>
-  <Data>
-    <Volume>
-      <HostDir>/mnt/user/appdata/mc-router-ui</HostDir>
-      <ContainerDir>/data</ContainerDir>
-      <Mode>rw</Mode>
-      <Name>Data Directory</Name>
-      <Type>Path</Type>
-      <Display>always</Display>
-      <Required>true</Required>
-      <Mask>false</Mask>
-    </Volume>
-    <Volume>
-      <HostDir>/mnt/user/appdata/crafty/servers</HostDir>
-      <ContainerDir>/crafty/servers</ContainerDir>
-      <Mode>rw</Mode>
-      <Name>Crafty Servers Directory Mount (optional)</Name>
-      <Type>Path</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-    </Volume>
-    <Volume>
-      <HostDir>/var/run/docker.sock</HostDir>
-      <ContainerDir>/var/run/docker.sock</ContainerDir>
-      <Mode>ro</Mode>
-      <Name>Docker Socket (optional — enables auto-discovery of Docker-labeled routes)</Name>
-      <Type>Path</Type>
-      <Display>advanced</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-    </Volume>
-  </Data>
-  <Environment>
-    <Variable>
-      <Value>25565</Value>
-      <Name>MC_PORT</Name>
-      <Target>MC_PORT</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>true</Required>
-      <Mask>false</Mask>
-      <Description>Minecraft ingress port (internal, exposed directly on the host with Host networking).</Description>
-    </Variable>
-    <Variable>
-      <Value>8080</Value>
-      <Name>API_PORT</Name>
-      <Target>API_PORT</Target>
-      <Type>Env</Type>
-      <Display>advanced</Display>
-      <Required>true</Required>
-      <Mask>false</Mask>
-      <Description>mc-router's own REST API port. Internal only — do not expose this externally.</Description>
-    </Variable>
-    <Variable>
-      <Value>http://localhost:8080</Value>
-      <Name>MC_ROUTER_API</Name>
-      <Target>MC_ROUTER_API</Target>
-      <Type>Env</Type>
-      <Display>advanced</Display>
-      <Required>true</Required>
-      <Mask>false</Mask>
-      <Description>mc-router API endpoint used internally by the web UI. Leave as-is unless MC_ROUTER_API/API_PORT were customized.</Description>
-    </Variable>
-    <Variable>
-      <Value>admin</Value>
-      <Name>ADMIN_USERNAME</Name>
-      <Target>ADMIN_USERNAME</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>true</Required>
-      <Mask>false</Mask>
-      <Description>Admin account username. Created on first start only.</Description>
-    </Variable>
-    <Variable>
-      <Value>changeme</Value>
-      <Name>ADMIN_PASSWORD</Name>
-      <Target>ADMIN_PASSWORD</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>true</Required>
-      <Mask>true</Mask>
-      <Description>Admin account password. CHANGE THIS. Only used to bootstrap the account on first start — later changes made in the UI are not overwritten by this value on restart.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>SECRET_KEY</Name>
-      <Target>SECRET_KEY</Target>
-      <Type>Env</Type>
-      <Display>advanced</Display>
-      <Required>false</Required>
-      <Mask>true</Mask>
-      <Description>Optional session secret key. Leave blank to auto-generate and persist one.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CLOUDFLARE_API_TOKEN</Name>
-      <Target>CLOUDFLARE_API_TOKEN</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>true</Mask>
-      <Description>Optional. Cloudflare API token (DNS:Edit permission) for automatic DNS records and DDNS.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CLOUDFLARE_ZONE_ID</Name>
-      <Target>CLOUDFLARE_ZONE_ID</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>Optional. Cloudflare Zone ID. Alternative to Zone Name below.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CLOUDFLARE_ZONE_NAME</Name>
-      <Target>CLOUDFLARE_ZONE_NAME</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>Optional. Cloudflare zone/domain name (e.g. example.com) — used to resolve the Zone ID automatically if not given above.</Description>
-    </Variable>
-    <Variable>
-      <Value>300</Value>
-      <Name>DDNS_INTERVAL_SECONDS</Name>
-      <Target>DDNS_INTERVAL_SECONDS</Target>
-      <Type>Env</Type>
-      <Display>advanced</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>How often (seconds) to check for public IP changes and update DNS.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CRAFTY_URL</Name>
-      <Target>CRAFTY_URL</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>Optional. Crafty Controller base URL, e.g. https://192.168.1.50:8443. Prefer a LAN IP over a Docker container name — see the Overview note on networking.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CRAFTY_API_KEY</Name>
-      <Target>CRAFTY_API_KEY</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>true</Mask>
-      <Description>Optional. Crafty Controller Bearer API token.</Description>
-    </Variable>
-    <Variable>
-      <Value/>
-      <Name>CRAFTY_INSECURE_SKIP_VERIFY</Name>
-      <Target>CRAFTY_INSECURE_SKIP_VERIFY</Target>
-      <Type>Env</Type>
-      <Display>always</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>Set to "true" ONLY if CRAFTY_URL is on your trusted local network and uses a self-signed certificate (the Crafty default). Without this, Crafty API calls fail TLS verification and never connect. Leave blank/false if Crafty is reachable from outside your LAN.</Description>
-    </Variable>
-    <Variable>
-      <Value>/crafty/servers</Value>
-      <Name>CRAFTY_SERVERS_DIR</Name>
-      <Target>CRAFTY_SERVERS_DIR</Target>
-      <Type>Env</Type>
-      <Display>advanced</Display>
-      <Required>false</Required>
-      <Mask>false</Mask>
-      <Description>Path (inside this container) to Crafty's servers directory, for direct server.properties editing. Matches the "Crafty Servers Directory Mount" volume above.</Description>
-    </Variable>
-  </Environment>
+  <TemplateURL>https://raw.githubusercontent.com/Tamino089/mc-router-ui/master/my-mc-router-ui.xml</TemplateURL>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mc-router-ui" Mode="rw" Description="Container Path: /data — stores the SQLite database and persistent config." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Crafty Servers Directory (optional)" Target="/crafty/servers" Default="/mnt/user/appdata/crafty/servers" Mode="rw" Description="Container Path: /crafty/servers — mount Crafty's servers directory here to allow port changes via server.properties." Type="Path" Display="always" Required="false" Mask="false"/>
+  <Config Name="Docker Socket (optional)" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Mount the Docker socket to enable auto-discovery of routes from container labels." Type="Path" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Minecraft Port" Target="MC_PORT" Default="25565" Description="Minecraft ingress port." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Admin Username" Target="ADMIN_USERNAME" Default="admin" Description="Admin account username. Created on first start only." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="changeme" Description="Admin account password. CHANGE THIS. Only used to bootstrap on first start." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Secret Key (optional)" Target="SECRET_KEY" Default="" Description="Optional session secret key. Leave blank to auto-generate and persist one." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Cloudflare API Token (optional)" Target="CLOUDFLARE_API_TOKEN" Default="" Description="Cloudflare API token with DNS:Edit permission for automatic DNS records and DDNS." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Cloudflare Zone ID (optional)" Target="CLOUDFLARE_ZONE_ID" Default="" Description="Cloudflare Zone ID. Alternative to Zone Name below." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Cloudflare Zone Name (optional)" Target="CLOUDFLARE_ZONE_NAME" Default="" Description="Cloudflare zone/domain name (e.g. example.com)." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="DDNS Interval" Target="DDNS_INTERVAL_SECONDS" Default="300" Description="How often (seconds) to check for public IP changes and update DNS." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Crafty URL (optional)" Target="CRAFTY_URL" Default="" Description="Crafty Controller base URL, e.g. https://192.168.1.50:8443." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Crafty API Key (optional)" Target="CRAFTY_API_KEY" Default="" Description="Crafty Controller Bearer API token." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Crafty Insecure Skip Verify (optional)" Target="CRAFTY_INSECURE_SKIP_VERIFY" Default="" Description='Set to "true" to skip TLS verification for self-signed Crafty certificates.' Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Crafty Servers Dir (optional)" Target="CRAFTY_SERVERS_DIR" Default="/crafty/servers" Description="Path inside container to Crafty's servers directory." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="API Port" Target="API_PORT" Default="8080" Description="Internal mc-router REST API port. Internal only." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Web UI Port" Target="8000" Default="8090" Description="Map this port to access the web UI." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Minecraft Game Port" Target="25565" Default="25565" Description="Minecraft server port — must match the port forwarding in your router." Type="Port" Display="always" Required="true" Mask="false"/>
 </Container>
