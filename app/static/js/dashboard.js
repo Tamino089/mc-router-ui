@@ -1335,8 +1335,11 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch {}
     });
 
-    evtSource.addEventListener('route-change', () => {
-      // Reload the page when routes change (SSE push from add/edit/delete)
+    evtSource.addEventListener('route-change', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.reason === 'crafty_port_change') return;
+      } catch {}
       setTimeout(() => window.location.reload(), 1000);
     });
 
