@@ -21,7 +21,7 @@ async def sse_stream(request: Request):
     user = current_user(request)
     if not user:
         from fastapi.responses import JSONResponse
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
 
     queue = subscribe()
 

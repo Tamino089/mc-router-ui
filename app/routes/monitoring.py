@@ -20,7 +20,7 @@ def _visible_route(request: Request, route_id: int):
     """Return a route only when the current user may inspect it."""
     user = current_user(request)
     if not user:
-        return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return None, JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
 
     with get_db() as con:
         route = con.execute(
@@ -29,11 +29,11 @@ def _visible_route(request: Request, route_id: int):
         ).fetchone()
 
     if not route:
-        return None, JSONResponse({"error": "Route not found"}, status_code=404)
+        return None, JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
     perms = user_has_perm_set(user)
     if user.get("role") != "admin" and "see_all_routes" not in perms:
         if "see_own_routes" not in perms or route["owner_id"] != user["id"]:
-            return None, JSONResponse({"error": "Forbidden"}, status_code=403)
+            return None, JSONResponse({"success": False, "error": "Forbidden"}, status_code=403)
     return route, None
 
 
@@ -85,7 +85,7 @@ async def check_route_health(request: Request, route_id: int):
 async def check_router_status(request: Request):
     """Check if the backend mc-router binary is answering."""
     if not current_user(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
     _, err = await mc_router.router_request("get", "/routes")
     return {"online": err is None, "error": err}
 
@@ -95,7 +95,7 @@ async def get_all_connections(request: Request):
     """Get active connections for all routes."""
     user = current_user(request)
     if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
     conns = await mc_router.get_connections()
     perms = user_has_perm_set(user)
     if user.get("role") == "admin" or "see_all_routes" in perms:
@@ -119,7 +119,7 @@ async def get_used_ports(request: Request):
     """Return all ports currently in use by routes or Crafty servers."""
     user = current_user(request)
     if not user:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
 
     perms = user_has_perm_set(user)
     used = []

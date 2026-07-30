@@ -23,7 +23,7 @@ router = APIRouter()
 async def api_get_users(request: Request):
     user = current_user(request)
     if not user or not user_has_perm(user, "see_all_users"):
-        return JSONResponse({"error": "Forbidden"}, status_code=403)
+        return JSONResponse({"success": False, "error": "Forbidden"}, status_code=403)
 
     with get_db() as con:
         rows = con.execute("SELECT id, username, role, created_at FROM users ORDER BY username").fetchall()
