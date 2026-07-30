@@ -2,7 +2,7 @@
 <Container version="2">
   <Name>MC-Router-UI</Name>
   <Repository>ghcr.io/tamino089/mc-router-ui:latest</Repository>
-  <Registry/>
+  <Registry>https://ghcr.io</Registry>
   <Network>host</Network>
   <MyIP/>
   <Shell>sh</Shell>
