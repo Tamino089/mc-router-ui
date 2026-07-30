@@ -25,7 +25,7 @@ HOSTNAME_RE = re.compile(
     r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 )
 SOCKET_ADDR_RE = re.compile(
-    r'^([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}:([0-9]{1,5})$'
+    r'^[a-zA-Z0-9.-]+:[0-9]{1,5}$'
 )
 IP_PORT_RE = re.compile(
     r'^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$'
