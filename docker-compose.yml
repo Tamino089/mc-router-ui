@@ -69,6 +69,8 @@ services:
       # Set to "true" if CRAFTY_URL is on your trusted local network — leave
       # unset/false if CRAFTY_URL points anywhere outside your LAN.
       CRAFTY_INSECURE_SKIP_VERIFY: ${CRAFTY_INSECURE_SKIP_VERIFY:-}
+      # Hostname/IP for TCP health checks to Crafty servers (e.g. "crafty" or "192.168.1.50")
+      CRAFTY_CONTAINER_HOST: ${CRAFTY_CONTAINER_HOST:-}
 
     volumes:
       - mc-router-ui-data:/data   # SQLite DB + persistence

@@ -183,6 +183,12 @@ def init_db() -> str:
             (config.CRAFTY_API_KEY_ENV,),
         )
         logger.info("CRAFTY_API_KEY set from environment variable.")
+    if config.CRAFTY_CONTAINER_HOST_ENV:
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)",
+            (config.CRAFTY_CONTAINER_HOST_ENV,),
+        )
+        logger.info("CRAFTY_CONTAINER_HOST set from environment variable.")
 
     con.commit()
     con.close()

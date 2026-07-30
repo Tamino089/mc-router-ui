@@ -32,6 +32,7 @@ CF_ENABLED = bool(CF_API_TOKEN and (CF_ZONE_ID or CF_ZONE_NAME))
 # ── Crafty Controller ─────────────────────────────────────────────────────────
 CRAFTY_URL_ENV = os.getenv("CRAFTY_URL", "")
 CRAFTY_API_KEY_ENV = os.getenv("CRAFTY_API_KEY", "")
+CRAFTY_CONTAINER_HOST_ENV = os.getenv("CRAFTY_CONTAINER_HOST", "")
 
 # ── Docker socket ──────────────────────────────────────────────────────────────
 DOCKER_SOCKET = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
