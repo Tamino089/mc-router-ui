@@ -186,6 +186,7 @@ function toggleTheme() {
 // ROUTE MODAL (simplified — single hostname + backend input, no confirm step)
 // ══════════════════════════════════════════════════════════════════════════════
 let craftyServers = [];
+let craftyContainerHost = '';
 let validationTimer = null;
 let currentValidation = null;
 let savedHostname = ''; // preserves hostname when toggling default checkbox
@@ -221,7 +222,6 @@ async function openRouteModal() {
   document.getElementById('f-is-default').checked = false;
   savedHostname = '';
   resetValidation();
-  document.getElementById('crafty-picker').innerHTML = '';
 
   openModal('route-modal');
   setTimeout(() => document.getElementById('f-hostname').focus(), 100);
@@ -229,33 +229,8 @@ async function openRouteModal() {
   // Load zones for domain dropdown (background)
   loadZones();
 
-  // Load Crafty servers for the quick-fill picker (background)
-  const picker = document.getElementById('crafty-picker');
-  if (IS_ADMIN || USER_PERMS.has('see_servers')) {
-    try {
-      const r = await fetch('/api/crafty/servers');
-      const d = await r.json();
-      if (d.success && d.servers.length) {
-        craftyServers = d.servers;
-        const label = document.createElement('span');
-        label.style.cssText = 'font-size:11px;color:var(--muted);width:100%;margin-bottom:2px;';
-        label.textContent = 'Quick-fill from Crafty:';
-        picker.appendChild(label);
-        d.servers.forEach(s => {
-          if (!s.container_address) return;
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'crafty-picker-btn';
-          btn.innerHTML = `<div class="dot ${s.running ? 'dot-green' : 'dot-gray'}"></div>${esc(s.name)} <span style="color:var(--muted);">:${s.port}</span>`;
-          btn.onclick = () => {
-            document.getElementById('f-backend').value = s.container_address;
-            triggerValidation();
-          };
-          picker.appendChild(btn);
-        });
-      }
-    } catch { craftyServers = []; }
-  }
+  // Load Crafty servers into the dropdown (background)
+  await loadCraftyBackendSelect();
 }
 
 async function openEditRouteModal(id, hostname, backend, isDefault) {
@@ -290,44 +265,68 @@ async function openEditRouteModal(id, hostname, backend, isDefault) {
   hostnameInput.disabled = isDefault;
   savedHostname = displayHostname;
 
-  document.getElementById('f-backend').value = backend;
-
-  // Load Crafty picker for edit mode too
-  const picker = document.getElementById('crafty-picker');
-  picker.innerHTML = '';
-  if (IS_ADMIN || USER_PERMS.has('see_servers')) {
-    fetch('/api/crafty/servers').then(r => r.json()).then(d => {
-      if (d.success && d.servers.length) {
-        craftyServers = d.servers;
-        const label = document.createElement('span');
-        label.style.cssText = 'font-size:11px;color:var(--muted);width:100%;margin-bottom:2px;';
-        label.textContent = 'Quick-fill from Crafty:';
-        picker.appendChild(label);
-        d.servers.forEach(s => {
-          if (!s.container_address) return;
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'crafty-picker-btn';
-          btn.innerHTML = `<div class="dot ${s.running ? 'dot-green' : 'dot-gray'}"></div>${esc(s.name)} <span style="color:var(--muted);">:${s.port}</span>`;
-          btn.onclick = () => {
-            document.getElementById('f-backend').value = s.container_address;
-            triggerValidation();
-          };
-          picker.appendChild(btn);
-        });
-      }
-    }).catch(() => {});
-  }
-
   resetValidation();
   openModal('route-modal');
-  triggerValidation();
+
+  // Load Crafty servers into dropdown and select the current backend
+  (async () => {
+    await loadCraftyBackendSelect();
+    const sel = document.getElementById('f-backend-select');
+    if (sel.style.display !== 'none') {
+      sel.value = backend;
+    }
+    document.getElementById('f-backend').value = backend;
+    triggerValidation();
+  })();
 }
 
 function closeRouteModal() {
   clearTimeout(validationTimer);
   currentValidation = null;
   closeModal('route-modal');
+}
+
+async function loadCraftyBackendSelect() {
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (!sel || !input) return;
+
+  if (!(IS_ADMIN || USER_PERMS.has('see_servers'))) return;
+
+  try {
+    const r = await fetch('/api/crafty/servers');
+    const d = await r.json();
+    if (!d.success || !d.servers.length) { craftyServers = []; return; }
+
+    craftyServers = d.servers;
+    const host = d.container_host || craftyContainerHost;
+    if (host) craftyContainerHost = host;
+
+    sel.innerHTML = '<option value="">Select a Crafty server…</option>';
+    d.servers.forEach(s => {
+      const addr = s.container_address || (host ? `${host}:${s.port}` : '');
+      if (!addr) return;
+      const opt = document.createElement('option');
+      opt.value = addr;
+      opt.textContent = `${s.name} (${addr})`;
+      if (!s.running) opt.textContent += ' — stopped';
+      sel.appendChild(opt);
+    });
+
+    sel.style.display = '';
+    input.style.display = 'none';
+  } catch { craftyServers = []; }
+}
+
+function onCraftyBackendSelect() {
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (sel.value) {
+    input.value = sel.value;
+  } else {
+    input.value = '';
+  }
+  triggerValidation();
 }
 
 function onDefaultToggle() {
@@ -542,6 +541,13 @@ async function submitDeleteRoute() {
   }
 }
 
+function craftyHealthError(backend) {
+  if (!backend || !craftyServers.length) return null;
+  const srv = craftyServers.find(s => s.container_address === backend);
+  if (srv && !srv.running) return `Server stopped — start it in Crafty (${srv.name})`;
+  return null;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // HEALTH / STATUS REFRESH
 // ══════════════════════════════════════════════════════════════════════════════
@@ -568,7 +574,13 @@ async function refreshHealth() {
             if (!d.healthy && d.error) dot.title = d.error; else dot.removeAttribute('title');
           }
           if (text) {
-            text.textContent = d.healthy ? 'Reachable' : (d.error ? `Offline — ${d.error}` : 'Offline');
+            let msg = d.healthy ? 'Reachable' : (d.error ? `Offline — ${d.error}` : 'Offline');
+            if (!d.healthy) {
+              const backend = row.dataset.backend;
+              const craftyMsg = craftyHealthError(backend);
+              if (craftyMsg) msg = craftyMsg;
+            }
+            text.textContent = msg;
             if (!d.healthy && d.error) text.title = d.error; else text.removeAttribute('title');
           }
         }

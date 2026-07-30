@@ -139,7 +139,7 @@ window.MC_UI_CONFIG = {
         </thead>
         <tbody>
           {% for r in routes %}
-          <tr id="row-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}">
+          <tr id="row-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}" data-backend="{{ r.backend }}">
             <td>
               <div style="display:flex;align-items:center;gap:8px;">
                 <span class="mono text-white">{{ r.hostname if r.hostname != '__default__' else '*' }}</span>
@@ -555,11 +555,13 @@ window.MC_UI_CONFIG = {
         </label>
       </div>
 
-      <div class="form-group route-modal-field">
+      <div class="form-group route-modal-field" id="f-backend-group">
         <label for="f-backend">Backend Server</label>
+        <select id="f-backend-select" onchange="onCraftyBackendSelect()" style="display:none;">
+          <option value="">Select a Crafty server…</option>
+        </select>
         <input type="text" id="f-backend" placeholder="host:port (e.g. 192.168.1.50:25566)" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
         <div class="form-hint">The Minecraft server address that traffic will be forwarded to.</div>
-        <div class="crafty-picker" id="crafty-picker"></div>
       </div>
 
       <!-- Compact inline validation -->

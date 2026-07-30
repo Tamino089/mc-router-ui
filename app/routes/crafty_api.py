@@ -67,7 +67,7 @@ async def get_crafty_servers(request: Request):
             "container_address": f"{chost}:{port}" if chost else "",
         })
 
-    return {"success": True, "servers": servers}
+    return {"success": True, "servers": servers, "container_host": chost}
 
 
 CRAFTY_ACTION_MAP = {
