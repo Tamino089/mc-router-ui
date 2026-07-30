@@ -1005,9 +1005,12 @@ function sleep(ms) {
 // ══════════════════════════════════════════════════════════════════════════════
 // USER MANAGEMENT
 // ══════════════════════════════════════════════════════════════════════════════
-async function loadUsersList() {
+let _usersLoaded = false;
+
+async function loadUsersList(force) {
   const tbody = document.getElementById('users-tbody');
   if (!tbody) return;
+  if (!force && _usersLoaded) return;
 
   tbody.innerHTML = skeletonRows([120,64,100,80,80]);
 
@@ -1063,6 +1066,7 @@ async function loadUsersList() {
           </td>` : '<td></td>'}
         </tr>`;
     }).join('');
+    _usersLoaded = true;
   } catch {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">Failed to load users</td></tr>';
   }
@@ -1119,7 +1123,7 @@ async function submitUserForm() {
     if (d.success) {
       closeModal('user-modal');
       showToast(d.message || 'User saved', 'success');
-      loadUsersList();
+      loadUsersList(true);
     } else {
       showToast(d.error || 'Failed to save user', 'error');
     }
@@ -1150,7 +1154,7 @@ async function submitDeleteUser() {
     if (d.success) {
       closeModal('delete-user-modal');
       showToast(d.message || 'User deleted', 'success');
-      loadUsersList();
+      loadUsersList(true);
     } else {
       showToast(d.error || 'Delete failed', 'error');
     }
@@ -1212,7 +1216,7 @@ async function savePermissions() {
     if (d.success) {
       closeModal('perm-modal');
       showToast('Permissions saved successfully', 'success');
-      loadUsersList();
+      loadUsersList(true);
     } else {
       showToast('Failed to save permissions', 'error');
     }
