@@ -959,6 +959,41 @@ main {
   position: relative;
 }
 
+.hostname-split {
+  display: flex; align-items: center; gap: 0;
+  width: 100%;
+}
+.hostname-split input {
+  flex: 1; min-width: 0;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+}
+.hostname-split input:focus {
+  border-right: none !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+.hostname-dot {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; flex-shrink: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: none; border-right: none;
+  color: var(--muted); font-size: 16px; font-weight: 700;
+  height: 38px; line-height: 1;
+}
+.hostname-split select {
+  width: auto; min-width: 140px; flex-shrink: 1;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-left: none !important;
+  font-size: 13px;
+}
+.hostname-split select:focus {
+  border-left: none !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
 .crafty-picker {
   display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 8px;

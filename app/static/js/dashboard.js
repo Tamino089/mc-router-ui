@@ -180,16 +180,38 @@ let savedHostname = ''; // preserves hostname when toggling default checkbox
 let activeModal = null;
 let modalReturnFocus = null;
 
+async function loadZones() {
+  const sel = document.getElementById('f-domain');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/cf/zones');
+    const d = await r.json();
+    sel.innerHTML = '<option value="">(enter full domain)</option>';
+    if (d.success && d.zones.length) {
+      d.zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.name;
+        opt.textContent = z.name;
+        sel.appendChild(opt);
+      });
+    }
+  } catch { /* ignore */ }
+}
+
 async function openRouteModal() {
   document.getElementById('route-modal-title').textContent = 'Create Route';
   document.getElementById('route-submit').textContent = 'Create Route';
   document.getElementById('f-route-id').value = '';
   document.getElementById('f-hostname').value = '';
   document.getElementById('f-hostname').disabled = false;
+  document.getElementById('f-domain').value = '';
   document.getElementById('f-backend').value = '';
   document.getElementById('f-is-default').checked = false;
   savedHostname = '';
   resetValidation();
+
+  // Load zones for domain dropdown
+  await loadZones();
 
   // Load Crafty servers for the quick-fill picker
   const picker = document.getElementById('crafty-picker');
@@ -221,19 +243,38 @@ async function openRouteModal() {
   }
 
   openModal('route-modal');
-  triggerValidation();
   setTimeout(() => document.getElementById('f-hostname').focus(), 100);
 }
 
-function openEditRouteModal(id, hostname, backend, isDefault) {
+async function openEditRouteModal(id, hostname, backend, isDefault) {
   document.getElementById('route-modal-title').textContent = 'Edit Route';
   document.getElementById('route-submit').textContent = 'Save Changes';
   document.getElementById('f-route-id').value = id;
   document.getElementById('f-is-default').checked = isDefault;
 
+  // Load zones for domain dropdown (needed before parsing hostname)
+  await loadZones();
+
   const displayHostname = (hostname === '__default__' || isDefault) ? '' : hostname;
   const hostnameInput = document.getElementById('f-hostname');
-  hostnameInput.value = displayHostname;
+  const domainSel = document.getElementById('f-domain');
+  // Parse hostname into subdomain + domain parts
+  if (displayHostname && displayHostname.includes('.')) {
+    const parts = displayHostname.split('.');
+    const tld = parts.pop();
+    const sld = parts.pop();
+    const domain = sld + '.' + tld;
+    // Check if domain matches an option
+    const opts = [...domainSel.options].map(o => o.value);
+    if (opts.includes(domain)) {
+      domainSel.value = domain;
+      hostnameInput.value = parts.join('.');
+    } else {
+      hostnameInput.value = displayHostname;
+    }
+  } else {
+    hostnameInput.value = displayHostname;
+  }
   hostnameInput.disabled = isDefault;
   savedHostname = displayHostname;
 
@@ -294,7 +335,12 @@ function onDefaultToggle() {
 function getEffectiveHostname() {
   const isDefault = document.getElementById('f-is-default').checked;
   if (isDefault) return '__default__';
-  return document.getElementById('f-hostname').value.trim().toLowerCase();
+  const sub = document.getElementById('f-hostname').value.trim().toLowerCase();
+  const domain = document.getElementById('f-domain').value;
+  if (domain && sub && !sub.includes('.')) {
+    return sub + '.' + domain;
+  }
+  return sub;
 }
 
 function getEffectiveBackend() {
@@ -332,11 +378,13 @@ async function performValidation() {
   const hostname = getEffectiveHostname();
   const backend  = getEffectiveBackend();
   const isDefault = document.getElementById('f-is-default').checked;
+  const domain = document.getElementById('f-domain').value;
 
   ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'checking', 'Checking…'));
 
   try {
     let url = `/api/validate-route?hostname=${encodeURIComponent(hostname)}&backend=${encodeURIComponent(backend)}&is_default=${isDefault}`;
+    if (domain) url += `&domain=${encodeURIComponent(domain)}`;
     if (routeId) url += `&route_id=${routeId}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error();
@@ -357,6 +405,20 @@ async function performValidation() {
         preview.style.display = 'none';
       }
     }
+
+    // Populate zone dropdown from response
+    if (d.zones && d.zones.length) {
+      const sel = document.getElementById('f-domain');
+      const curVal = sel.value;
+      sel.innerHTML = '<option value="">(enter full domain)</option>';
+      d.zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.name;
+        opt.textContent = z.name;
+        sel.appendChild(opt);
+      });
+      if (curVal) sel.value = curVal;
+    }
   } catch {
     ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'error', 'Validation failed.'));
     const preview = document.getElementById('hostname-preview');
@@ -366,7 +428,7 @@ async function performValidation() {
 
 function triggerValidation() {
   clearTimeout(validationTimer);
-  validationTimer = setTimeout(performValidation, 500);
+  validationTimer = setTimeout(performValidation, 150);
 }
 
 // Route form submit — fetch with JSON body

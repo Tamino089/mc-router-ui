@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/css/main.css?v=4">
+<link rel="stylesheet" href="/static/css/main.css?v=5">
 
 <!-- Theme: apply before paint to avoid flash -->
 <script>
@@ -561,7 +561,13 @@ window.MC_UI_CONFIG = {
 
       <div class="form-group route-modal-field">
         <label for="f-hostname">Hostname</label>
-        <input type="text" id="f-hostname" placeholder="Subdomain only (e.g. play)" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+        <div class="hostname-split">
+          <input type="text" id="f-hostname" placeholder="Subdomain" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+          <span class="hostname-dot">.</span>
+          <select id="f-domain" onchange="triggerValidation()">
+            <option value="">(enter full domain)</option>
+          </select>
+        </div>
         <div id="hostname-preview" class="form-hint resolved-preview" style="display:none;"></div>
         <div class="form-hint">The Minecraft client connects to this hostname.</div>
       </div>
@@ -818,6 +824,6 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Dashboard JS -->
-<script src="/static/js/dashboard.js?v=4"></script>
+<script src="/static/js/dashboard.js?v=5"></script>
 </body>
 </html>
