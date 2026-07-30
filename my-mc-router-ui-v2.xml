@@ -8,7 +8,7 @@
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support/>
-  <Project>https://github.com/itzg/mc-router</Project>
+  <Project>https://github.com/Tamino089/mc-router-ui</Project>
   <Overview>Minecraft Reverse-Proxy Web-UI mit Cloudflare DDNS und Crafty Controller Integration. mc-router und die Web-UI laufen zusammen in einem einzigen Docker-Container über Supervisor.</Overview>
   <Category>Network:Proxy Status:Stable</Category>
   <WebUI>http://[IP]:[PORT:8090]</WebUI>

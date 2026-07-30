@@ -77,7 +77,7 @@ async def save_crafty_settings(
 
     url = crafty_url.strip()
     token = crafty_token.strip()
-    chost = crafty_container_host.strip() if crafty_container_host else "crafty"
+    chost = crafty_container_host.strip() if crafty_container_host else ""
 
     with get_db() as con:
         con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)", (url,))
@@ -119,7 +119,7 @@ async def save_wizard_settings(
             if crafty_url and crafty_token:
                 con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)", (crafty_url.strip(),))
                 con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_token',?)", (crafty_token.strip(),))
-                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)", ("crafty",))
+                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)", ("",))
 
         con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('setup_wizard_done',?)", ("1",))
         con.commit()

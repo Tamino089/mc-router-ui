@@ -81,8 +81,5 @@ services:
       retries: 3
       start_period: 15s
 
-    # Optional: host network mode for direct access to Docker-internal MC servers
-    # network_mode: host
-
 volumes:
   mc-router-ui-data:

@@ -31,7 +31,7 @@ async def get_crafty_servers(request: Request):
 
     with get_db() as con:
         chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
-        chost = chost_row[0] if chost_row else "crafty"
+        chost = chost_row[0] if chost_row else ""
 
     async def fetch_stats(server_id):
         stats_data, _ = await crafty.crafty_request("get", f"/servers/{server_id}/stats")
@@ -164,7 +164,7 @@ async def crafty_change_port(
     chost_row = None
     with get_db() as con:
         chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
-    chost = chost_row[0] if chost_row else "crafty"
+    chost = chost_row[0] if chost_row else ""
     old_bk = f"{chost}:{server_data.get('server_port')}"
     new_bk = f"{chost}:{port}"
     routes_updated = 0

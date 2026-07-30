@@ -26,7 +26,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-secret_key = schema.init_db()
+try:
+    secret_key = schema.init_db()
+except Exception:
+    logger.exception("Failed to initialize database at import time")
+    secret_key = "fallback-insecure-key-please-set-secret-key"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,18 +42,17 @@ async def lifespan(app: FastAPI):
         await mc_router.sync_routes_to_router(con)
     
     # Start background loops
-    ddns_task = asyncio.create_task(cloudflare.ddns_loop())
-    health_task = asyncio.create_task(health.health_loop())
-    sse_task = asyncio.create_task(sse_emitter_loop())
-    docker_task = asyncio.create_task(docker_watcher.docker_watcher_loop())
+    tasks = [
+        asyncio.create_task(cloudflare.ddns_loop()),
+        asyncio.create_task(health.health_loop()),
+        asyncio.create_task(sse_emitter_loop()),
+        asyncio.create_task(docker_watcher.docker_watcher_loop()),
+    ]
     
     yield
     
-    # Shutdown
-    ddns_task.cancel()
-    health_task.cancel()
-    sse_task.cancel()
-    docker_task.cancel()
+    for t in tasks:
+        t.cancel()
     logger.info("MC Router UI shutdown complete.")
 
 
@@ -189,7 +192,7 @@ async def dashboard(request: Request):
         crafty_config = {
             "url": c_url[0] if c_url else "",
             "token": crafty_token_raw if can_manage_crafty else _masked(crafty_token_raw),
-            "container_host": c_host[0] if c_host else "crafty",
+            "container_host": c_host[0] if c_host else "",
         }
 
         cf_config = {
@@ -223,6 +226,6 @@ async def dashboard(request: Request):
             "mc_port": config.MC_PORT,
             "mc_router_api": config.MC_ROUTER_API,
             "show_wizard": show_wizard,
-            "docker_enabled": config.DOCKER_ENABLED,
+            "docker_enabled": config.docker_enabled(),
         },
     )

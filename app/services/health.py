@@ -56,12 +56,19 @@ async def check_all_routes():
         parts = route["backend"].rsplit(":", 1)
         host = parts[0]
         port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 25565
-
         healthy, latency, error = await loop.run_in_executor(
             None, tcp_check, host, port
         )
+        return route["id"], healthy, latency, error
 
-        with get_db() as con:
+    results = await asyncio.gather(*[check_one(r) for r in routes], return_exceptions=True)
+
+    with get_db() as con:
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("Health check failed with exception: %s", result)
+                continue
+            route_id, healthy, latency, error = result
             con.execute(
                 """INSERT INTO health_checks (route_id, healthy, latency_ms, checked_at, error)
                    VALUES (?, ?, ?, datetime('now'), ?)
@@ -70,16 +77,14 @@ async def check_all_routes():
                        latency_ms=excluded.latency_ms,
                        checked_at=excluded.checked_at,
                        error=excluded.error""",
-                (route["id"], int(healthy), latency if healthy else None, error or None),
+                (route_id, int(healthy), latency if healthy else None, error or None),
             )
             con.execute(
                 """INSERT INTO health_history (route_id, healthy, latency_ms, checked_at)
                    VALUES (?, ?, ?, datetime('now'))""",
-                (route["id"], int(healthy), latency if healthy else None),
+                (route_id, int(healthy), latency if healthy else None),
             )
-            con.commit()
-
-    await asyncio.gather(*[check_one(r) for r in routes], return_exceptions=True)
+        con.commit()
 
 
 async def prune_old_history():
@@ -95,10 +100,14 @@ async def prune_old_history():
 
 async def health_loop():
     """Background loop: check all routes every HEALTH_CHECK_INTERVAL seconds."""
+    consecutive_errors = 0
     while True:
         try:
             await check_all_routes()
             await prune_old_history()
+            consecutive_errors = 0
         except Exception:
             logger.exception("Error in health check loop")
-        await asyncio.sleep(HEALTH_CHECK_INTERVAL)
+            consecutive_errors += 1
+        backoff = min(consecutive_errors * HEALTH_CHECK_INTERVAL, 600)
+        await asyncio.sleep(HEALTH_CHECK_INTERVAL + backoff)

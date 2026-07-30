@@ -5,7 +5,7 @@ FROM itzg/mc-router:latest AS mcrouter
 FROM python:3.12-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends supervisor && \
+    apt-get install -y --no-install-recommends supervisor tini && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=mcrouter /mc-router /usr/local/bin/mc-router
@@ -55,4 +55,5 @@ LABEL org.opencontainers.image.title="MC Router UI" \
       org.opencontainers.image.description="Minecraft Reverse-Proxy Web UI with Cloudflare DDNS and Crafty Controller integration" \
       org.opencontainers.image.licenses="MIT"
 
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/mcrouter.conf"]

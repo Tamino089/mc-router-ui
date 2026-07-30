@@ -14,7 +14,7 @@ from typing import Optional
 
 import httpx
 
-from app.core.config import DOCKER_ENABLED, DOCKER_SOCKET
+from app.core.config import DOCKER_SOCKET, docker_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ async def discover_docker_routes(force: bool = False) -> list[dict]:
     if not force and _cache and (now - _cache_ts) < _CACHE_TTL:
         return _cache
 
-    if not DOCKER_ENABLED:
+    if not docker_enabled():
         _cache = []
         return _cache
 

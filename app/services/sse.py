@@ -43,18 +43,20 @@ async def broadcast(event: str, data: Any):
 # ── Background emitter loop ──────────────────────────────────────────────────
 async def sse_emitter_loop():
     """Publish connection and router status updates to connected clients."""
+    consecutive_errors = 0
     while True:
         try:
-            # Health checks are owned by health_loop; this worker only emits
-            # connection and router status events.
             conns = await mc_router.get_connections()
             await broadcast("connections", conns)
 
             _, err = await mc_router.router_request("get", "/routes")
             await broadcast("router-status", {"online": err is None, "error": err})
 
+            consecutive_errors = 0
         except asyncio.CancelledError:
             break
         except Exception:
             logger.exception("Error in SSE emitter loop")
-        await asyncio.sleep(10)
+            consecutive_errors += 1
+        backoff = min(consecutive_errors * 10, 300)
+        await asyncio.sleep(10 + backoff)

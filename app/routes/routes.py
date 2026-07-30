@@ -139,7 +139,10 @@ async def add_route(request: Request):
                         {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
                         status_code=400,
                     )
-                # Skip Cloudflare zone validation for full FQDNs
+                # Validate domain is under our Cloudflare zone
+                valid, v_err = await cloudflare.validate_domain(hostname, is_def)
+                if not valid:
+                    return JSONResponse({"success": False, "error": v_err}, status_code=400)
             else:
                 # Subdomain-only — requires Cloudflare to resolve
                 cf_token, _, _ = await cloudflare.get_cf_config()
@@ -274,6 +277,10 @@ async def edit_route(request: Request, route_id: int):
                     {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
                     status_code=400,
                 )
+            # Validate domain is under our Cloudflare zone
+            valid, v_err = await cloudflare.validate_domain(hostname, is_def)
+            if not valid:
+                return JSONResponse({"success": False, "error": v_err}, status_code=400)
         else:
             # Subdomain-only — requires Cloudflare to resolve
             cf_token, _, _ = await cloudflare.get_cf_config()
@@ -342,15 +349,12 @@ async def edit_route(request: Request, route_id: int):
                 if existing:
                     return JSONResponse({"success": False, "error": "Hostname already exists"}, status_code=409)
 
-            # Step 1: Create NEW DNS record BEFORE deleting old one
+            # Step 1: Create NEW DNS record
             cf_err = None
             dns_done = False
             if not is_def:
                 cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
                 dns_done = not cf_err
-
-            if dns_done and old_hostname != hostname and not old_is_default:
-                await cloudflare.cf_delete_record_by_hostname(old_hostname)
 
             # Step 2: Push to mc-router (hard requirement — rollback DNS on failure)
             if is_def:
@@ -378,6 +382,10 @@ async def edit_route(request: Request, route_id: int):
                 (hostname, backend, int(is_def), route_id),
             )
             con.commit()
+
+            # Step 4: Delete old DNS record only after everything succeeds
+            if dns_done and old_hostname != hostname and not old_is_default:
+                await cloudflare.cf_delete_record_by_hostname(old_hostname)
     except Exception:
         logger.exception("Error editing route %d", route_id)
         # Best-effort rollback: DNS new record + mc-router push

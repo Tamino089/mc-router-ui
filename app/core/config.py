@@ -35,7 +35,11 @@ CRAFTY_API_KEY_ENV = os.getenv("CRAFTY_API_KEY", "")
 
 # ── Docker socket ──────────────────────────────────────────────────────────────
 DOCKER_SOCKET = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
-DOCKER_ENABLED = os.path.exists(DOCKER_SOCKET)
+
+
+def docker_enabled() -> bool:
+    """Check if Docker socket is available at call time (not import time)."""
+    return os.path.exists(DOCKER_SOCKET)
 
 # ── Health checks ─────────────────────────────────────────────────────────────
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", "30"))

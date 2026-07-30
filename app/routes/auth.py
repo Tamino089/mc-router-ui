@@ -25,6 +25,7 @@ templates = Jinja2Templates(directory="app/templates")
 _LOGIN_ATTEMPTS: dict[str, list[float]] = {}
 _MAX_ATTEMPTS = 5
 _WINDOW_SECONDS = 60
+_MAX_ENTRIES = 10000
 
 
 def _client_ip(request: Request) -> str:
@@ -34,7 +35,17 @@ def _client_ip(request: Request) -> str:
 def _is_rate_limited(ip: str) -> bool:
     now = time.monotonic()
     attempts = [t for t in _LOGIN_ATTEMPTS.get(ip, []) if now - t < _WINDOW_SECONDS]
-    _LOGIN_ATTEMPTS[ip] = attempts
+    if attempts:
+        _LOGIN_ATTEMPTS[ip] = attempts
+    elif ip in _LOGIN_ATTEMPTS:
+        del _LOGIN_ATTEMPTS[ip]
+    # Prune stale entries when dict grows too large
+    if len(_LOGIN_ATTEMPTS) > _MAX_ENTRIES:
+        cutoff = now - _WINDOW_SECONDS
+        for k in list(_LOGIN_ATTEMPTS.keys()):
+            _LOGIN_ATTEMPTS[k] = [t for t in _LOGIN_ATTEMPTS[k] if t >= cutoff]
+            if not _LOGIN_ATTEMPTS[k]:
+                del _LOGIN_ATTEMPTS[k]
     return len(attempts) >= _MAX_ATTEMPTS
 
 

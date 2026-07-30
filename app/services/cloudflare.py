@@ -231,6 +231,7 @@ async def validate_domain(
 
 async def ddns_loop():
     """Background loop that syncs DNS records when the public IP changes."""
+    consecutive_errors = 0
     while True:
         try:
             token, zid, zname = get_cf_config()
@@ -271,8 +272,11 @@ async def ddns_loop():
                                 (ip,),
                             )
                             con.commit()
+            consecutive_errors = 0
         except asyncio.CancelledError:
             break
-        except Exception as e:
+        except Exception:
             logger.exception("Error in DDNS loop")
-        await asyncio.sleep(config.DDNS_INTERVAL)
+            consecutive_errors += 1
+        backoff = min(consecutive_errors * config.DDNS_INTERVAL, 3600)
+        await asyncio.sleep(config.DDNS_INTERVAL + backoff)
