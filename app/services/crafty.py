@@ -148,7 +148,9 @@ def get_server_properties_path(
     filesystem globbing on every port-change request.
     """
     if server_id in _prop_path_cache:
-        return _prop_path_cache[server_id]
+        cached = _prop_path_cache[server_id]
+        logger.debug("get_server_properties_path: cache hit for %s -> %s", server_id, cached)
+        return cached
 
     candidate_dirs = [
         Path("/crafty/servers"),
@@ -161,9 +163,16 @@ def get_server_properties_path(
     if env_base:
         candidate_dirs.insert(0, Path(env_base))
 
+    logger.info(
+        "get_server_properties_path: searching for server '%s' (name='%s') in %d candidate dirs",
+        server_id, server_name, len(candidate_dirs),
+    )
+
     for base_dir in candidate_dirs:
         if not base_dir.exists() or not base_dir.is_dir():
+            logger.debug("get_server_properties_path: candidate dir %s does not exist, skipping", base_dir)
             continue
+        logger.debug("get_server_properties_path: checking candidate dir %s", base_dir)
 
         # 1. Direct subfolder check by server_id or server_name
         for folder_name in (server_id, server_name):
@@ -171,19 +180,25 @@ def get_server_properties_path(
                 continue
             target_dir = base_dir / folder_name
             if target_dir.exists() and target_dir.is_dir():
+                logger.debug("get_server_properties_path: found matching subfolder %s", target_dir)
                 direct_prop = target_dir / "server.properties"
                 if direct_prop.exists():
+                    logger.info("get_server_properties_path: found %s (size=%d)", direct_prop, direct_prop.stat().st_size)
                     _prop_path_cache[server_id] = direct_prop
                     return direct_prop
                 try:
                     for found in target_dir.rglob("server.properties"):
                         if found.is_file():
+                            logger.info("get_server_properties_path: found via rglob %s (size=%d)", found, found.stat().st_size)
                             _prop_path_cache[server_id] = found
                             return found
                 except Exception as e:
                     logger.warning("Error searching in %s: %s", target_dir, e)
+            else:
+                logger.debug("get_server_properties_path: subfolder %s not found in %s", folder_name, base_dir)
 
         # 2. Iterative search across all subdirectories of base_dir
+        logger.debug("get_server_properties_path: scanning all subdirs of %s for match", base_dir)
         try:
             for child in base_dir.iterdir():
                 if child.is_dir():
@@ -191,12 +206,15 @@ def get_server_properties_path(
                     if (server_id and server_id.lower() in child_name) or (
                         server_name and server_name.lower() in child_name
                     ):
+                        logger.debug("get_server_properties_path: subdir %s matches (child_name=%s)", child, child_name)
                         direct_prop = child / "server.properties"
                         if direct_prop.exists():
+                            logger.info("get_server_properties_path: found %s (size=%d)", direct_prop, direct_prop.stat().st_size)
                             _prop_path_cache[server_id] = direct_prop
                             return direct_prop
                         for found in child.rglob("server.properties"):
                             if found.is_file():
+                                logger.info("get_server_properties_path: found via rglob %s (size=%d)", found, found.stat().st_size)
                                 _prop_path_cache[server_id] = found
                                 return found
         except Exception as e:
@@ -207,8 +225,12 @@ def get_server_properties_path(
     if env_exact:
         path = Path(env_exact)
         if path.exists():
+            logger.info("get_server_properties_path: found via SERVER_PROPERTIES_PATH %s", path)
             _prop_path_cache[server_id] = path
             return path
+        logger.debug("get_server_properties_path: SERVER_PROPERTIES_PATH=%s does not exist", env_exact)
+
+    logger.warning("get_server_properties_path: no match found for server '%s'", server_id)
     _prop_path_cache[server_id] = None
     return None
 
@@ -217,21 +239,27 @@ def update_server_properties_port(file_path: Path, new_port: int) -> bool:
     """Update server-port and query.port in server.properties."""
     try:
         if not file_path.exists():
-            logger.error("server.properties not found at %s", file_path)
+            logger.error("update_server_properties_port: file not found at %s", file_path)
             return False
 
         content = file_path.read_text(encoding="utf-8", errors="ignore")
         lines = content.splitlines()
         updated_server = False
         updated_query = False
+        old_server_port = None
+        old_query_port = None
 
         new_lines = []
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("server-port="):
+                old_val = line.split("=", 1)[1] if "=" in line else ""
+                old_server_port = old_val
                 new_lines.append(f"server-port={new_port}")
                 updated_server = True
             elif stripped.startswith("query.port="):
+                old_val = line.split("=", 1)[1] if "=" in line else ""
+                old_query_port = old_val
                 new_lines.append(f"query.port={new_port}")
                 updated_query = True
             else:
@@ -243,8 +271,16 @@ def update_server_properties_port(file_path: Path, new_port: int) -> bool:
             new_lines.append(f"query.port={new_port}")
 
         file_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        logger.info("Updated port to %d in %s", new_port, file_path)
+
+        size_before = len(content.encode("utf-8"))
+        size_after = file_path.stat().st_size
+        logger.info(
+            "update_server_properties_port: %s — server-port: %s→%d, query.port: %s→%d (size: %d→%d bytes)",
+            file_path, old_server_port or "(missing)", new_port,
+            old_query_port or "(missing)", new_port,
+            size_before, size_after,
+        )
         return True
     except Exception:
-        logger.exception("Failed to update server.properties at %s", file_path)
+        logger.exception("update_server_properties_port: failed for %s", file_path)
         return False

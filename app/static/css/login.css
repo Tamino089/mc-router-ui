@@ -103,27 +103,10 @@ body::before {
 }
 
 /* ── Logo ─────────────────────────────────────────────────────────────────────── */
-.logo {
-  display: flex; align-items: center; gap: 15px;
-  margin-bottom: 36px;
-}
-
-.logo-icon {
-  width: 48px; height: 48px;
-  background: var(--accent);
-  border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.logo-icon svg { width: 24px; height: 24px; color: #fff; }
-
-.logo-info h1 {
+.logo { margin-bottom: 36px; }
+.logo h1 {
   font-size: 22px; font-weight: 700; color: var(--text);
-  letter-spacing: -0.5px; line-height: 1.1;
-}
-.logo-info span {
-  display: block; font-size: 12px; color: var(--muted);
-  font-weight: 400; margin-top: 3px;
+  letter-spacing: -0.5px; line-height: 1.1; margin: 0;
 }
 
 /* ── Error alert ──────────────────────────────────────────────────────────────── */

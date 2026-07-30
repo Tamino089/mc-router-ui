@@ -209,13 +209,16 @@ async function openRouteModal() {
   document.getElementById('f-is-default').checked = false;
   savedHostname = '';
   resetValidation();
+  document.getElementById('crafty-picker').innerHTML = '';
 
-  // Load zones for domain dropdown
-  await loadZones();
+  openModal('route-modal');
+  setTimeout(() => document.getElementById('f-hostname').focus(), 100);
 
-  // Load Crafty servers for the quick-fill picker
+  // Load zones for domain dropdown (background)
+  loadZones();
+
+  // Load Crafty servers for the quick-fill picker (background)
   const picker = document.getElementById('crafty-picker');
-  picker.innerHTML = '';
   if (IS_ADMIN || USER_PERMS.has('see_servers')) {
     try {
       const r = await fetch('/api/crafty/servers');
@@ -241,9 +244,6 @@ async function openRouteModal() {
       }
     } catch { craftyServers = []; }
   }
-
-  openModal('route-modal');
-  setTimeout(() => document.getElementById('f-hostname').focus(), 100);
 }
 
 async function openEditRouteModal(id, hostname, backend, isDefault) {
@@ -883,6 +883,10 @@ async function submitCraftyPort() {
   const restart = document.getElementById('cp-restart')?.checked ? '1' : '';
   if (!serverId || !port) { showToast('Port is required', 'error'); return; }
 
+  const btn = form.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Applying…';
+
   const fd = new FormData();
   fd.append('port', port);
   if (restart) fd.append('restart', '1');
@@ -901,6 +905,9 @@ async function submitCraftyPort() {
     }
   } catch {
     showToast('Network error', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Apply Port';
   }
 }
 
@@ -1081,11 +1088,10 @@ async function openPermModal(userId, username) {
     grid.innerHTML = ALL_PERMS.map(perm => {
       const active = userPerms.has(perm);
       return `
-        <label class="perm-item ${active ? 'active' : ''}" data-perm="${perm}" onclick="togglePerm(this)">
-          <input type="checkbox" ${active ? 'checked' : ''}>
+        <div class="perm-item ${active ? 'active' : ''}" data-perm="${perm}" onclick="togglePerm(this)">
           <div class="perm-check"></div>
           <span>${PERM_LABELS[perm] || perm}</span>
-        </label>`;
+        </div>`;
     }).join('');
   } catch {
     grid.innerHTML = '<div style="color:var(--danger);font-size:13px;">Failed to load permissions</div>';
@@ -1094,14 +1100,16 @@ async function openPermModal(userId, username) {
 
 function togglePerm(el) {
   el.classList.toggle('active');
-  const cb = el.querySelector('input');
-  if (cb) cb.checked = !cb.checked;
 }
 
 async function savePermissions() {
   const userId = document.getElementById('perm-user-id').value;
   const perms = [...document.querySelectorAll('#perm-grid .perm-item.active')]
     .map(el => el.dataset.perm);
+
+  const btn = document.querySelector('#perm-modal .modal-footer .btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
 
   try {
     const r = await fetch(`/api/permissions/${userId}`, {
@@ -1119,6 +1127,9 @@ async function savePermissions() {
     }
   } catch {
     showToast('Network error', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Save Permissions';
   }
 }
 

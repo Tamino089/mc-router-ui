@@ -142,19 +142,10 @@ header {
 
 .header-left { display: flex; align-items: center; gap: 12px; }
 
-/* Logo */
-.logo-mark {
-  width: 32px; height: 32px;
-  background: var(--accent);
-  border-radius: var(--r-sm);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+.brand {
+  font-size: 16px; font-weight: 700; color: var(--text);
+  letter-spacing: -0.3px; line-height: 1; margin: 0;
 }
-.logo-mark svg { width: 18px; height: 18px; color: #000; }
-
-.logo-text { display: flex; flex-direction: column; gap: 1px; }
-.logo-text h1 { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; line-height: 1; }
-.logo-text span { font-size: 11px; color: var(--muted); line-height: 1; }
 
 /* Header center: tabs */
 .header-center { display: flex; align-items: center; }
@@ -1028,7 +1019,7 @@ main {
 
 @media (max-width: 600px) {
   .status-pill { display: none; }
-  .logo-text span { display: none; }
+
   .user-name { display: none; }
 }
 
