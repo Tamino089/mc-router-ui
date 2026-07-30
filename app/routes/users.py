@@ -12,25 +12,11 @@ from app.core.security import current_user, hash_password
 from app.db.database import get_db
 from app.db.schema import user_has_perm, get_user_perms, grant_default_permissions
 from app.core.config import ALL_PERMISSIONS
+from app.routes import get_form_or_json
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-async def _get_form_or_json(request: Request) -> dict:
-    """Extract form data from either JSON body or form-encoded POST."""
-    content_type = request.headers.get("content-type", "")
-    if "json" in content_type:
-        try:
-            return await request.json()
-        except Exception:
-            return {}
-    try:
-        form = await request.form()
-        return {k: v for k, v in form.items()}
-    except Exception:
-        return {}
 
 
 @router.get("/api/users")
@@ -50,7 +36,7 @@ async def add_user(request: Request):
     if not user or not user_has_perm(user, "manage_users"):
         return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
-    data = await _get_form_or_json(request)
+    data = await get_form_or_json(request)
     username = data.get("username", "").strip()
     password = data.get("password", "")
     role = data.get("role", "user")
@@ -83,7 +69,7 @@ async def edit_user(request: Request, user_id: int):
     if not user or not user_has_perm(user, "manage_users"):
         return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
-    data = await _get_form_or_json(request)
+    data = await get_form_or_json(request)
     username = data.get("username", "").strip()
     password = data.get("password", "")
     role = data.get("role", "user")

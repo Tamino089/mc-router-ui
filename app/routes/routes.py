@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from app.core.security import current_user
 from app.db.database import get_db
 from app.db.schema import user_has_perm
+from app.routes import get_form_or_json
 from app.services import cloudflare, docker_watcher, mc_router
 from app.services.health import tcp_check
 from app.services.sse import broadcast
@@ -55,21 +56,6 @@ def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes"}
 
 
-async def _get_form_or_json(request: Request) -> dict:
-    """Extract form data from either JSON body or form-encoded POST."""
-    content_type = request.headers.get("content-type", "")
-    if "json" in content_type:
-        try:
-            return await request.json()
-        except Exception:
-            return {}
-    try:
-        form = await request.form()
-        return {k: v for k, v in form.items()}
-    except Exception:
-        return {}
-
-
 async def _trigger_health_check(route_id: int, backend: str):
     """Run an immediate TCP health check for a single route and store the result."""
     try:
@@ -101,7 +87,7 @@ async def add_route(request: Request):
     if not user_has_perm(user, "create_route"):
         return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
-    data = await _get_form_or_json(request)
+    data = await get_form_or_json(request)
     raw_hostname = data.get("hostname", "").strip().lower()
     backend = data.get("backend", "").strip()
     is_def = _as_bool(data.get("is_default", False))
@@ -280,7 +266,7 @@ async def edit_route(request: Request, route_id: int):
     if not user:
         return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
 
-    data = await _get_form_or_json(request)
+    data = await get_form_or_json(request)
     raw_hostname = data.get("hostname", "").strip().lower()
     backend = data.get("backend", "").strip()
     is_def = _as_bool(data.get("is_default", False))
