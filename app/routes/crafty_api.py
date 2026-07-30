@@ -44,7 +44,9 @@ async def get_crafty_servers(request: Request):
     for s, stats in zip(data, stats_results):
         server_id = s.get("server_id")
         # In Crafty v4, stats are merged into the data dict of the /stats response
-        port = s.get("server_port") or stats.get("server_port")
+        port = s.get("server_port")
+        if port is None:
+            port = stats.get("server_port")
         running = stats.get("running", False)
 
         # TCP health check from our container to the game server
@@ -166,7 +168,9 @@ async def crafty_change_port(
     with get_db() as con:
         chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
         chost = chost_row[0] if chost_row else ""
-        old_port = server_data.get("server_port") or server_data.get("port")
+        old_port = server_data.get("server_port")
+        if old_port is None:
+            old_port = server_data.get("port")
         old_bk = f"{chost}:{old_port}"
         new_bk = f"{chost}:{port}"
         impacted = con.execute(
