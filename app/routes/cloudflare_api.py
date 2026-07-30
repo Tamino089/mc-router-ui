@@ -154,7 +154,7 @@ async def validate_route(request: Request):
 
     # Fetch available zones for domain dropdown
     zones = []
-    cf_token, _, _ = await cloudflare.get_cf_config()
+    cf_token, _, _ = cloudflare.get_cf_config()
     if cf_token:
         zdata, zerr = await cloudflare.cf_request("get", "/zones")
         if not zerr and zdata and zdata.get("result"):
