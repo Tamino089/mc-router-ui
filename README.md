@@ -1,5 +1,7 @@
 # mc-router-ui
 
+[![GHCR](https://github.com/Tamino089/mc-router-ui/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Tamino089/mc-router-ui/actions/workflows/docker-publish.yml)
+
 > A self-hosted web UI for [mc-router](https://github.com/itzg/mc-router) — the Minecraft reverse proxy — with Cloudflare DDNS, Crafty Controller integration, real-time health monitoring, and Docker label discovery.  
 > Runs as a **single container** managed by supervisord.
 
@@ -38,16 +40,16 @@ services:
       - mc
 
   mc-router-ui:
-    image: tamino089/mc-router-ui:latest   # or build from source
+    image: ghcr.io/tamino089/mc-router-ui:latest
     ports:
       - "8000:8000"
     environment:
       MC_ROUTER_API: http://mc-router:8080
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: changeme            # Change this!
+      ADMIN_PASSWORD: changeme
       # Cloudflare DDNS (optional)
       CLOUDFLARE_API_TOKEN: ""
-      CLOUDFLARE_ZONE_ID: ""             # or CLOUDFLARE_ZONE_NAME
+      CLOUDFLARE_ZONE_ID: ""
       # Crafty Controller (optional)
       CRAFTY_URL: ""
       CRAFTY_API_KEY: ""
@@ -67,16 +69,7 @@ networks:
 
 Then open [http://localhost:8000](http://localhost:8000) and log in with the credentials above.
 
-### Build from Source
-
-```bash
-git clone https://github.com/Tamino089/mc-router-ui.git
-cd mc-router-ui
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-> **Note:** Requires a running [mc-router](https://github.com/itzg/mc-router) instance with the REST API enabled (`API_BINDING=0.0.0.0:8080`).
+Images are automatically built and published to [GitHub Container Registry](https://github.com/Tamino089/mc-router-ui/pkgs/container/mc-router-ui) on every push to `master`.
 
 ---
 
@@ -207,9 +200,14 @@ Admins have full access. Regular users can be assigned any combination of:
 
 ---
 
-## Unraid Setup
+## Unraid
 
-See [UNRAID_SETUP.md](./UNRAID_SETUP.md) for the full Unraid Community Applications template walkthrough and the XML template files in the repository root.
+1. Install the template from **Docker → Add Container → Template → MC-Router-UI** (after importing `my-mc-router-ui.xml` to `/boot/config/plugins/docker/templates-user/`).
+2. The container uses `ghcr.io/tamino089/mc-router-ui:latest` — the **Update** button pulls the latest pre-built image automatically.
+3. Set your admin credentials and optional Cloudflare/Crafty settings in the UI fields.
+4. Defaults to **Host networking** — see the template overview note if switching to Bridge.
+
+> If you prefer to build locally, use `scripts/update-unraid.sh` (supports `MODE=build`).
 
 ---
 

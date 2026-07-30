@@ -29,6 +29,9 @@ build/
 *.xml
 docs/
 
+# GitHub Actions
+.github/
+
 # Misc
 .DS_Store
 Thumbs.db
