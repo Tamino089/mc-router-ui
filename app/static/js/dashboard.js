@@ -269,15 +269,19 @@ async function openEditRouteModal(id, hostname, backend, isDefault) {
   openModal('route-modal');
 
   // Load Crafty servers into dropdown and select the current backend
-  (async () => {
-    await loadCraftyBackendSelect();
-    const sel = document.getElementById('f-backend-select');
-    if (sel.style.display !== 'none') {
-      sel.value = backend;
+  await loadCraftyBackendSelect();
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (sel.style.display !== 'none') {
+    sel.value = backend;
+    // If backend isn't in the dropdown options, fall back to text input
+    if (sel.value !== backend) {
+      sel.style.display = 'none';
+      input.style.display = '';
     }
-    document.getElementById('f-backend').value = backend;
-    triggerValidation();
-  })();
+  }
+  input.value = backend;
+  triggerValidation();
 }
 
 function closeRouteModal() {
