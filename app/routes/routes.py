@@ -352,9 +352,7 @@ async def edit_route(request: Request, route_id: int):
                     status_code=403,
                 )
 
-            if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
-                return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
-            if r_row["owner_id"] == user["id"] and not user_has_perm(user, "edit_own_route"):
+            if user.get("role") != "admin" and (r_row["owner_id"] != user["id"] or not user_has_perm(user, "edit_own_route")):
                 return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
             old_hostname = r_row["hostname"]
@@ -442,9 +440,7 @@ async def delete_route(request: Request, route_id: int):
                 status_code=403,
             )
 
-        if r_row["owner_id"] != user["id"] and user.get("role") != "admin":
-            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
-        if r_row["owner_id"] == user["id"] and not user_has_perm(user, "delete_own_route"):
+        if user.get("role") != "admin" and (r_row["owner_id"] != user["id"] or not user_has_perm(user, "delete_own_route")):
             return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
 
         hostname = r_row["hostname"]
