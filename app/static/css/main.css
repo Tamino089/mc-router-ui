@@ -1042,6 +1042,41 @@ main {
   .header-right { gap: 4px; }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   PORT CHANGE STEP PROGRESS
+   ══════════════════════════════════════════════════════════════════════════════ */
+.steps { margin: 8px 0 4px; }
+.step {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+.step:last-child { border-bottom: none; }
+.step-icon {
+  width: 22px; height: 22px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-size: 11px; font-weight: 700;
+  background: var(--surface3); color: var(--muted);
+  transition: all 0.25s ease;
+}
+.step-icon .spinner {
+  width: 14px; height: 14px; margin: 0;
+  border-width: 2px;
+}
+.step-active { color: var(--text-2); }
+.step-active .step-icon { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-glow); }
+.step-done { color: var(--text); }
+.step-done .step-icon { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-glow); }
+.step-error { color: var(--danger); }
+.step-error .step-icon { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger-glow); }
+.step-error .step-msg { font-size: 12px; color: var(--danger); margin-top: 2px; }
+
+.step-summary {
+  text-align: center; padding: 16px 0 8px;
+  font-size: 14px; font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

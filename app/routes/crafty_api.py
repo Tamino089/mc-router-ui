@@ -158,7 +158,7 @@ async def crafty_change_port(
     if not file_updated and not api_updated:
         msg = f"Could not locate or update server.properties for server '{server_name or server_id}'. Ensure Crafty server directory is mounted to /crafty/servers."
         logger.error(msg)
-        return JSONResponse({"success": False, "error": msg}, status_code=500)
+        return JSONResponse({"success": False, "error": msg, "file_updated": False, "api_updated": False, "routes_updated": 0}, status_code=500)
 
     # 6) Update routes table + mc-router for any route pointing to this server
     chost = ""

@@ -828,22 +828,131 @@ async function craftyAction(serverId, action, btn) {
 }
 
 function openCraftyPortModal(serverId, serverName, currentPort) {
+  document.getElementById('cp-form-view').style.display = '';
+  document.getElementById('cp-progress-view').style.display = 'none';
   document.getElementById('crafty-port-form').dataset.serverId = serverId;
   document.getElementById('cp-server-name').textContent = serverName;
   document.getElementById('cp-port').value = currentPort || '';
   openModal('crafty-port-modal');
 }
 
+function showPortProgress(serverName, port) {
+  document.getElementById('cp-form-view').style.display = 'none';
+  document.getElementById('cp-progress-view').style.display = '';
+  document.getElementById('cp-modal-title').textContent = 'Changing Port…';
+  document.getElementById('cp-progress-name').textContent = serverName;
+  document.getElementById('cp-progress-port').textContent = port;
+  document.getElementById('cp-progress-footer').style.display = 'none';
+  document.getElementById('cp-summary').textContent = '';
+}
+
+function renderSteps(restart) {
+  const container = document.getElementById('cp-steps');
+  const steps = [
+    { id: 'stop', label: 'Stop server', visible: restart },
+    { id: 'file', label: 'Update server.properties' },
+    { id: 'api', label: 'Update Crafty database' },
+    { id: 'routes', label: 'Update routes' },
+    { id: 'start', label: 'Start server', visible: restart },
+  ];
+  container.innerHTML = steps.map(s => `
+    <div class="step" id="step-${s.id}" style="${s.visible === false ? 'display:none' : ''}">
+      <div class="step-icon" id="step-icon-${s.id}">
+        <span class="spinner"></span>
+      </div>
+      <div>
+        <div class="step-label">${esc(s.label)}</div>
+        <div class="step-msg" id="step-msg-${s.id}"></div>
+      </div>
+    </div>
+  `).join('');
+  // Start first visible step
+  const first = steps.find(s => s.visible !== false);
+  if (first) setStepActive(first.id);
+}
+
+function setStepActive(id) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-active';
+  document.getElementById(`step-icon-${id}`).innerHTML = '<span class="spinner"></span>';
+}
+
+function setStepDone(id) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-done';
+  document.getElementById(`step-icon-${id}`).innerHTML = '✓';
+}
+
+function setStepError(id, msg) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-error';
+  document.getElementById(`step-icon-${id}`).innerHTML = '✗';
+  if (msg) document.getElementById(`step-msg-${id}`).textContent = msg;
+}
+
+function advanceStep(fromId, toId) {
+  setStepDone(fromId);
+  if (toId) setStepActive(toId);
+}
+
 async function submitCraftyPort() {
   const form = document.getElementById('crafty-port-form');
   const serverId = form.dataset.serverId;
+  const serverName = document.getElementById('cp-server-name').textContent;
   const port = document.getElementById('cp-port').value;
-  const restart = document.getElementById('cp-restart')?.checked ? '1' : '';
+  const restart = document.getElementById('cp-restart')?.checked;
   if (!serverId || !port) { showToast('Port is required', 'error'); return; }
 
-  const btn = form.querySelector('button[type="submit"]');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Applying…';
+  showPortProgress(serverName, port);
+  renderSteps(restart);
+
+  // Animate steps: each step gets ~400ms of "loading" feel before advancing
+  async function animateSteps(results) {
+    // Stop server (skip if not restarting)
+    if (restart) {
+      await sleep(400);
+      advanceStep('stop', 'file');
+    } else {
+      setStepActive('file');
+    }
+
+    await sleep(400);
+    if (results.file_updated) {
+      advanceStep('file', 'api');
+    } else {
+      setStepError('file', 'File not found — is the Crafty servers volume mounted?');
+      setStepError('api', 'Skipped');
+      setStepError('routes', 'Skipped');
+      showPortResult(false, 'Could not locate server.properties on the mounted volume.');
+      return;
+    }
+
+    await sleep(400);
+    if (results.api_updated) {
+      advanceStep('api', 'routes');
+    } else {
+      setStepError('api', 'Crafty API PATCH endpoint not available');
+      advanceStep('api', 'routes');
+    }
+
+    await sleep(400);
+    if (results.routes_updated > 0) {
+      advanceStep('routes', restart ? 'start' : null);
+    } else {
+      setStepDone('routes');
+      if (restart) setStepActive('start');
+    }
+
+    if (restart) {
+      await sleep(400);
+      setStepDone('start');
+    }
+
+    showPortResult(true, `Port changed to ${port} successfully.`);
+  }
 
   const fd = new FormData();
   fd.append('port', port);
@@ -853,20 +962,28 @@ async function submitCraftyPort() {
     const r = await fetch(`/api/crafty/servers/${serverId}/port`, { method: 'POST', body: fd });
     const d = await r.json();
     if (d.success) {
-      closeModal('crafty-port-modal');
-      showToast(d.message || 'Port updated', 'success');
-      if (d.file_updated) showToast('server.properties updated via volume mount', 'info');
-      if (d.api_updated) showToast('Crafty API updated', 'info');
+      await animateSteps(d);
       setTimeout(() => loadCraftyServers(), 1500);
     } else {
-      showToast(d.error || 'Port change failed', 'error');
+      setStepError('file', d.file_updated === false ? 'File not found — check volume mount' : '');
+      setStepError('api', d.api_updated === false ? 'Crafty API rejected the change' : '');
+      showPortResult(false, d.error || 'Port change failed');
     }
   } catch {
-    showToast('Network error', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = 'Apply Port';
+    showPortResult(false, 'Network error — could not reach the server.');
   }
+}
+
+function showPortResult(success, message) {
+  document.getElementById('cp-modal-title').textContent = success ? 'Port Changed' : 'Port Change Failed';
+  const summary = document.getElementById('cp-summary');
+  summary.textContent = message;
+  summary.style.color = success ? 'var(--green)' : 'var(--danger)';
+  document.getElementById('cp-progress-footer').style.display = '';
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
