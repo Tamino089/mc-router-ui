@@ -153,7 +153,9 @@ async def cf_delete_record_by_id(record_id: str) -> Optional[str]:
 
 async def sync_dns_for_route(hostname: str, is_default: bool) -> Optional[str]:
     token, _, _ = get_cf_config()
-    if not token or is_default or not hostname or hostname == "__default__":
+    if not token:
+        return "Cloudflare not configured — DNS record not created"
+    if is_default or not hostname or hostname == "__default__":
         return None
     ip = await get_public_ip()
     if not ip:

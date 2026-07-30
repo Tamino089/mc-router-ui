@@ -64,7 +64,7 @@ async def get_crafty_servers(request: Request):
             "max_players": stats.get("max", 0),
             "cpu": stats.get("cpu", 0.0),
             "mem_percent": stats.get("mem_percent", 0.0),
-            "container_address": f"{chost}:{port}",
+            "container_address": f"{chost}:{port}" if chost else "",
         })
 
     return {"success": True, "servers": servers}
@@ -161,14 +161,13 @@ async def crafty_change_port(
         return JSONResponse({"success": False, "error": msg}, status_code=500)
 
     # 6) Update routes table + mc-router for any route pointing to this server
-    chost_row = None
-    with get_db() as con:
-        chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
-    chost = chost_row[0] if chost_row else ""
-    old_bk = f"{chost}:{server_data.get('server_port')}"
-    new_bk = f"{chost}:{port}"
+    chost = ""
     routes_updated = 0
     with get_db() as con:
+        chost_row = con.execute("SELECT value FROM settings WHERE key='crafty_container_host'").fetchone()
+        chost = chost_row[0] if chost_row else ""
+        old_bk = f"{chost}:{server_data.get('server_port')}"
+        new_bk = f"{chost}:{port}"
         impacted = con.execute(
             "SELECT id, hostname, is_default FROM routes WHERE backend=?", (old_bk,)
         ).fetchall()

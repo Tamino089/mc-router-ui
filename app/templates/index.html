@@ -562,7 +562,8 @@ window.MC_UI_CONFIG = {
       <div class="form-group route-modal-field">
         <label for="f-hostname">Hostname</label>
         <input type="text" id="f-hostname" placeholder="Subdomain only (e.g. play)" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
-        <div class="form-hint">Enter just the subdomain — the Cloudflare domain is appended automatically. The Minecraft client connects to this hostname.</div>
+        <div id="hostname-preview" class="form-hint resolved-preview" style="display:none;"></div>
+        <div class="form-hint">The Minecraft client connects to this hostname.</div>
       </div>
 
       <div class="form-group">

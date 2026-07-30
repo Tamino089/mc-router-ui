@@ -672,6 +672,12 @@ main {
   margin-top: 5px; line-height: 1.5;
 }
 
+.resolved-preview {
+  font-size: 12px; color: var(--accent);
+  padding: 4px 0 0 0; font-weight: 500;
+}
+.resolved-preview::before { content: "→ "; }
+
 /* ── Custom Toggle Switch ─────────────────────────────────────────────────── */
 /* NOTE: this is deliberately ".form-group label.toggle-row" (not just
    ".toggle-row"). ".form-group label" above sets display:block, and since

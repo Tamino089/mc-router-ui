@@ -65,7 +65,7 @@ async def push_route(hostname: str, backend: str, retries: int = 3) -> Optional[
 
 async def delete_route(hostname: str) -> Optional[str]:
     _, err = await router_request("delete", f"/routes/{hostname}")
-    if err and "error 404" in err.lower():
+    if err and "404" in err:
         return None
     return err
 
@@ -93,9 +93,16 @@ async def get_connections() -> dict:
 async def sync_routes_to_router(db):
     """Push all stored routes to mc-router on startup."""
     rows = db.execute("SELECT hostname, backend, is_default FROM routes").fetchall()
+    errors = 0
     for row in rows:
         if row[2]:
-            await push_default(row[1])
+            err = await push_default(row[1])
         else:
-            await push_route(row[0], row[1])
-    logger.info("Synced %d routes to mc-router", len(rows))
+            err = await push_route(row[0], row[1])
+        if err:
+            errors += 1
+            logger.warning("Failed to sync route %s to mc-router: %s", row[0], err)
+    if errors:
+        logger.warning("Synced %d route(s) to mc-router with %d error(s)", len(rows), errors)
+    else:
+        logger.info("Synced %d route(s) to mc-router", len(rows))

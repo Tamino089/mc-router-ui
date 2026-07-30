@@ -205,6 +205,7 @@ async function openRouteModal() {
         label.textContent = 'Quick-fill from Crafty:';
         picker.appendChild(label);
         d.servers.forEach(s => {
+          if (!s.container_address) return;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'crafty-picker-btn';
@@ -220,6 +221,7 @@ async function openRouteModal() {
   }
 
   openModal('route-modal');
+  triggerValidation();
   setTimeout(() => document.getElementById('f-hostname').focus(), 100);
 }
 
@@ -249,6 +251,7 @@ function openEditRouteModal(id, hostname, backend, isDefault) {
         label.textContent = 'Quick-fill from Crafty:';
         picker.appendChild(label);
         d.servers.forEach(s => {
+          if (!s.container_address) return;
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'crafty-picker-btn';
@@ -268,7 +271,11 @@ function openEditRouteModal(id, hostname, backend, isDefault) {
   triggerValidation();
 }
 
-function closeRouteModal() { closeModal('route-modal'); }
+function closeRouteModal() {
+  clearTimeout(validationTimer);
+  currentValidation = null;
+  closeModal('route-modal');
+}
 
 function onDefaultToggle() {
   const checked = document.getElementById('f-is-default').checked;
@@ -303,6 +310,8 @@ function resetValidation() {
     el.querySelector('.v-indicator').textContent = '?';
   });
   currentValidation = null;
+  const preview = document.getElementById('hostname-preview');
+  if (preview) preview.style.display = 'none';
 }
 
 function updateValidation(fieldId, status, message) {
@@ -316,6 +325,9 @@ function updateValidation(fieldId, status, message) {
 }
 
 async function performValidation() {
+  const modal = document.getElementById('route-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+
   const routeId  = document.getElementById('f-route-id').value;
   const hostname = getEffectiveHostname();
   const backend  = getEffectiveBackend();
@@ -334,8 +346,21 @@ async function performValidation() {
     updateValidation('val-cf',      d['val-cf'].status,       d['val-cf'].message);
     updateValidation('val-dns',     d['val-dns'].status,      d['val-dns'].message);
     updateValidation('val-backend', d['val-backend'].status,  d['val-backend'].message);
+
+    // Show resolved hostname preview
+    const preview = document.getElementById('hostname-preview');
+    if (preview) {
+      if (d['val-resolved']) {
+        preview.textContent = d['val-resolved'];
+        preview.style.display = '';
+      } else {
+        preview.style.display = 'none';
+      }
+    }
   } catch {
     ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'error', 'Validation failed.'));
+    const preview = document.getElementById('hostname-preview');
+    if (preview) preview.style.display = 'none';
   }
 }
 

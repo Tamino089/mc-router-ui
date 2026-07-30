@@ -129,6 +129,7 @@ async def validate_route(request: Request):
         "val-cf": {"status": "neutral", "message": ""},
         "val-dns": {"status": "neutral", "message": ""},
         "val-backend": {"status": "neutral", "message": ""},
+        "val-resolved": "",
     }
 
     if is_default:
@@ -146,16 +147,32 @@ async def validate_route(request: Request):
                 res["val-format"] = {"status": "warning", "message": "Subdomain only — Cloudflare needed to resolve"}
                 res["val-cf"] = {"status": "error", "message": "Cloudflare not configured"}
             else:
-                res["val-format"] = {"status": "checking", "message": "Will resolve via Cloudflare…"}
-                res["val-cf"] = {"status": "success", "message": "Cloudflare configured"}
+                resolved = await cloudflare.resolve_hostname(hostname)
+                if resolved:
+                    res["val-format"] = {"status": "success", "message": f"Resolves to {resolved}"}
+                    res["val-cf"] = {"status": "success", "message": "Cloudflare configured"}
+                    res["val-resolved"] = resolved
+                else:
+                    res["val-format"] = {"status": "error", "message": "No Cloudflare zone configured to resolve subdomain"}
+                    res["val-cf"] = {"status": "success", "message": "Cloudflare configured"}
         else:
             # Full FQDN provided
             from app.routes.routes import HOSTNAME_RE
             if HOSTNAME_RE.match(hostname):
                 res["val-format"] = {"status": "success", "message": "Valid FQDN format"}
-                res["val-cf"] = {"status": "neutral", "message": "Not needed (full FQDN provided)"}
+                valid, v_err = await cloudflare.validate_domain(hostname, is_default)
+                if valid:
+                    res["val-cf"] = {"status": "success", "message": "Domain matches configured zone"}
+                else:
+                    res["val-cf"] = {"status": "error", "message": v_err or "Domain not under configured zone"}
             else:
                 res["val-format"] = {"status": "error", "message": "Invalid FQDN format"}
+
+        # Docker-managed hostname check
+        if hostname and not is_default:
+            from app.services.docker_watcher import is_docker_managed
+            if await is_docker_managed(hostname):
+                res["val-format"] = {"status": "error", "message": f"'{hostname}' is managed by Docker labels"}
 
         # DNS record check (only for non-default, non-docker routes)
         if hostname and "." in hostname:

@@ -5,6 +5,7 @@ CRUD operations for Minecraft routes.
 import asyncio
 import logging
 import re
+import sqlite3
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -176,7 +177,20 @@ async def add_route(request: Request):
                     status_code=409,
                 )
 
-        # Step 1: Create DNS record (rollback if later steps fail)
+        # Step 1: Check DB uniqueness first — before any external side effects
+        old_default = None
+        with get_db() as con:
+            existing = con.execute(
+                "SELECT id FROM routes WHERE hostname=?", (hostname,)
+            ).fetchone()
+            if existing:
+                return JSONResponse({"success": False, "error": "Route already exists"}, status_code=409)
+            if is_def:
+                old_default = con.execute(
+                    "SELECT id, backend FROM routes WHERE is_default=1"
+                ).fetchone()
+
+        # Step 2: Create DNS record (rollback if later steps fail)
         dns_done = False
         dns_msg = ""
         if not is_def:
@@ -187,7 +201,7 @@ async def add_route(request: Request):
                 dns_done = True
                 dns_msg = " (DNS record created/updated)"
 
-        # Step 2: Push to mc-router
+        # Step 3: Push to mc-router
         sync_warn = ""
         if is_def:
             err = await mc_router.push_default(backend)
@@ -198,9 +212,10 @@ async def add_route(request: Request):
                 await cloudflare.cf_delete_record_by_hostname(hostname)
             return JSONResponse({"success": False, "error": f"mc-router sync failed: {err}"}, status_code=500)
 
-        # Step 3: Save to DB (final — source of truth)
+        # Step 4: Save to DB (final — source of truth)
         try:
             with get_db() as con:
+                # Double-check uniqueness (minimises TOCTOU window)
                 existing = con.execute(
                     "SELECT id FROM routes WHERE hostname=?", (hostname,)
                 ).fetchone()
@@ -211,15 +226,11 @@ async def add_route(request: Request):
                         await mc_router.delete_route(hostname)
                     return JSONResponse({"success": False, "error": "Route already exists"}, status_code=409)
 
-                if is_def:
-                    old_default = con.execute(
-                        "SELECT id, backend FROM routes WHERE is_default=1"
-                    ).fetchone()
-                    if old_default:
-                        con.execute(
-                            "UPDATE routes SET is_default=0 WHERE id=?",
-                            (old_default["id"],),
-                        )
+                if is_def and old_default:
+                    con.execute(
+                        "UPDATE routes SET is_default=0 WHERE id=?",
+                        (old_default["id"],),
+                    )
 
                 cur = con.execute(
                     "INSERT INTO routes (hostname, backend, is_default, source, owner_id) VALUES (?, ?, ?, 'static', ?)",
@@ -227,15 +238,25 @@ async def add_route(request: Request):
                 )
                 route_id = cur.lastrowid
                 con.commit()
-        except Exception:
-            # Rollback DNS and mc-router
+        except sqlite3.IntegrityError:
             if dns_done:
                 await cloudflare.cf_delete_record_by_hostname(hostname)
             if not is_def:
                 await mc_router.delete_route(hostname)
             else:
-                # For default routes: push previous default back or leave orphan
-                logger.warning("DB save failed after mc-router default was set — mc-router may have orphan default route")
+                if old_default:
+                    await mc_router.push_default(old_default["backend"])
+                logger.warning("DB save failed after mc-router default was set — restored previous default")
+            return JSONResponse({"success": False, "error": "Route already exists (concurrent creation)"}, status_code=409)
+        except Exception:
+            if dns_done:
+                await cloudflare.cf_delete_record_by_hostname(hostname)
+            if not is_def:
+                await mc_router.delete_route(hostname)
+            else:
+                if old_default:
+                    await mc_router.push_default(old_default["backend"])
+                logger.warning("DB save failed after mc-router default was set — restored previous default")
             raise
 
         await _trigger_health_check(route_id, backend)
@@ -263,6 +284,19 @@ async def edit_route(request: Request, route_id: int):
     raw_hostname = data.get("hostname", "").strip().lower()
     backend = data.get("backend", "").strip()
     is_def = _as_bool(data.get("is_default", False))
+
+    if not backend:
+        return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
+    if not is_def and not SOCKET_ADDR_RE.match(backend) and not _valid_ip_port(backend):
+        return JSONResponse(
+            {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
+            status_code=400,
+        )
+    parts = backend.rsplit(":", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        port = int(parts[1])
+        if port < 1 or port > 65535:
+            return JSONResponse({"success": False, "error": "Port must be between 1 and 65535"}, status_code=400)
 
     hostname = raw_hostname
     if is_def:
