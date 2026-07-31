@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.security import current_user
-from app.services.sse import subscribe, unsubscribe
+from app.services.sse import snapshot, subscribe, unsubscribe
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ async def sse_stream(request: Request):
         try:
             # Send initial keepalive
             yield "event: connected\ndata: {}\n\n"
+            # Send a snapshot of the current state so new clients render
+            # immediately instead of waiting for the next data change.
+            for frame in snapshot():
+                yield frame
             while True:
                 if await request.is_disconnected():
                     break

@@ -94,6 +94,10 @@ async def discover_docker_routes(force: bool = False) -> list[dict]:
 
         if not backend:
             backend = f"{container_name}:25565"
+            logger.warning(
+                "Container %s exposes no TCP port mapping — using fallback backend %s",
+                container_name, backend,
+            )
 
         discovered.append({
             "hostname": hostname,

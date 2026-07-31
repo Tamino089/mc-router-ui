@@ -81,6 +81,7 @@ async def edit_user(request: Request, user_id: int):
 
     with get_db() as con:
         try:
+            con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT role FROM users WHERE id=?",
                 (user_id,),
@@ -128,6 +129,7 @@ async def delete_user(request: Request, user_id: int):
         return JSONResponse({"success": False, "error": "You cannot delete yourself"}, status_code=400)
 
     with get_db() as con:
+        con.execute("BEGIN IMMEDIATE")
         r = con.execute("SELECT role FROM users WHERE id=?", (user_id,)).fetchone()
         if not r:
             return JSONResponse({"success": False, "error": "User not found"}, status_code=404)
