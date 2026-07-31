@@ -4,13 +4,19 @@ CRUD operations for Minecraft routes.
 
 import asyncio
 import logging
-import re
 import sqlite3
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.core.security import current_user
+from app.core.validation import (
+    HOSTNAME_RE,
+    is_valid_backend,
+    normalize_backend,
+    parse_backend,
+    valid_ip_port,
+)
 from app.db.database import get_db
 from app.db.schema import user_has_perm
 from app.routes import get_form_or_json
@@ -21,32 +27,6 @@ from app.services.sse import broadcast
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# ── Strict validation patterns ────────────────────────────────────────────────
-HOSTNAME_RE = re.compile(
-    r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
-)
-SOCKET_ADDR_RE = re.compile(
-    r'^[a-zA-Z0-9._-]+:[0-9]{1,5}$'
-)
-IP_PORT_RE = re.compile(
-    r'^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$'
-)
-
-def _valid_ip_port(s: str) -> bool:
-    """Validate IP:PORT with proper octet ranges (0-255 each)."""
-    m = IP_PORT_RE.match(s)
-    if not m:
-        return False
-    ip_part, port_part = s.rsplit(":", 1)
-    try:
-        octets = [int(o) for o in ip_part.split(".")]
-        if any(o < 0 or o > 255 for o in octets):
-            return False
-        port = int(port_part)
-        return 1 <= port <= 65535
-    except ValueError:
-        return False
 
 
 def _as_bool(value) -> bool:
@@ -59,9 +39,7 @@ def _as_bool(value) -> bool:
 async def _trigger_health_check(route_id: int, backend: str):
     """Run an immediate TCP health check for a single route and store the result."""
     try:
-        parts = backend.rsplit(":", 1)
-        host = parts[0]
-        port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 25565
+        host, port = parse_backend(backend)
         healthy, latency, error = await asyncio.to_thread(tcp_check, host, port, 3.0)
         with get_db() as con:
             con.execute(
@@ -98,11 +76,14 @@ async def add_route(request: Request):
         return JSONResponse({"success": False, "error": "Hostname is required"}, status_code=400)
 
     # ── Strict backend validation ────────────────────────────────────────────
-    if not is_def and not SOCKET_ADDR_RE.match(backend) and not _valid_ip_port(backend):
+    if not is_def and not is_valid_backend(backend):
         return JSONResponse(
             {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
             status_code=400,
         )
+    # Normalize bare hostname/IP backends to include the default Minecraft port
+    if not is_def:
+        backend = normalize_backend(backend)
     parts = backend.rsplit(":", 1)
     if len(parts) == 2 and parts[1].isdigit():
         port = int(parts[1])
@@ -270,11 +251,14 @@ async def edit_route(request: Request, route_id: int):
 
     if not backend:
         return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
-    if not is_def and not SOCKET_ADDR_RE.match(backend) and not _valid_ip_port(backend):
+    if not is_def and not is_valid_backend(backend):
         return JSONResponse(
             {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
             status_code=400,
         )
+    # Normalize bare hostname/IP backends to include the default Minecraft port
+    if not is_def:
+        backend = normalize_backend(backend)
     parts = backend.rsplit(":", 1)
     if len(parts) == 2 and parts[1].isdigit():
         port = int(parts[1])

@@ -3,7 +3,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -78,7 +78,19 @@ app.include_router(monitoring.router)
 app.include_router(events.router)
 
 
-# ── Global exception handler ────────────────────────────────────────────────
+# ── Global exception handlers ─────────────────────────────────────────────────
+# HTTPException must be handled separately so auth/validation dependencies get
+# their intended status codes (401/403/404) instead of falling through to the
+# catch-all Exception handler and becoming a 500.
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": exc.detail},
+        headers=getattr(exc, "headers", None),
+    )
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception(

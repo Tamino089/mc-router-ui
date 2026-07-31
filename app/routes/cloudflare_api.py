@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.core.security import current_user
+from app.core.validation import HOSTNAME_RE
 from app.db.schema import user_has_perm
 from app.services import cloudflare
 from app.services.cloudflare import get_cf_config
@@ -184,7 +185,6 @@ async def validate_route(request: Request):
             res["val-format"] = {"status": "neutral", "message": "Enter a hostname"}
         elif domain and "." not in hostname:
             # Subdomain + domain selected
-            from app.routes.routes import HOSTNAME_RE
             if HOSTNAME_RE.match(full_hostname):
                 res["val-format"] = {"status": "success", "message": f"Resolves to {full_hostname}"}
                 res["val-resolved"] = full_hostname
@@ -211,7 +211,6 @@ async def validate_route(request: Request):
                     res["val-cf"] = {"status": "success", "message": "Cloudflare configured"}
         else:
             # Full FQDN provided
-            from app.routes.routes import HOSTNAME_RE
             if HOSTNAME_RE.match(hostname):
                 res["val-format"] = {"status": "success", "message": "Valid FQDN format"}
                 valid, v_err = await cloudflare.validate_domain(hostname, is_default)
