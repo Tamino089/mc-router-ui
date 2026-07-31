@@ -30,9 +30,31 @@ const PERM_LABELS = {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// API FETCH WITH TIMEOUT
+// ══════════════════════════════════════════════════════════════════════════════
+const FETCH_TIMEOUT_MS = 15000;
+
+async function apiFetch(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const abortErr = new Error('Request timed out');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // TOAST NOTIFICATIONS
 // ══════════════════════════════════════════════════════════════════════════════
-function showToast(message, type = 'info', duration = 4000) {
+function showToast(message, type = 'info', duration = 4000, retryFn = null) {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
@@ -44,6 +66,20 @@ function showToast(message, type = 'info', duration = 4000) {
   const content = document.createElement('span');
   content.textContent = String(message);
   toast.append(icon, content);
+
+  if (type === 'error' && typeof retryFn === 'function') {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'toast-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => {
+      toast.classList.add('toast-out');
+      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      retryFn();
+    });
+    toast.appendChild(retryBtn);
+    duration = Math.max(duration, 8000);
+  }
+
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -197,7 +233,7 @@ async function loadZones() {
   const sel = document.getElementById('f-domain');
   if (!sel) return;
   try {
-    const r = await fetch('/api/cf/zones');
+    const r = await apiFetch('/api/cf/zones');
     const d = await r.json();
     sel.innerHTML = '<option value="">(enter full domain)</option>';
     if (d.success && d.zones.length) {
@@ -208,7 +244,10 @@ async function loadZones() {
         sel.appendChild(opt);
       });
     }
-  } catch { /* ignore */ }
+  } catch {
+    sel.innerHTML = '<option value="">(zones unavailable)</option>';
+    showToast('Could not load Cloudflare zones', 'error');
+  }
 }
 
 async function openRouteModal() {
@@ -298,7 +337,7 @@ async function loadCraftyBackendSelect() {
   if (!(IS_ADMIN || USER_PERMS.has('see_servers'))) return;
 
   try {
-    const r = await fetch('/api/crafty/servers');
+    const r = await apiFetch('/api/crafty/servers');
     const d = await r.json();
     if (!d.success || !d.servers.length) { craftyServers = []; return; }
 
@@ -319,7 +358,11 @@ async function loadCraftyBackendSelect() {
 
     sel.style.display = '';
     input.style.display = 'none';
-  } catch { craftyServers = []; }
+  } catch {
+    craftyServers = [];
+    sel.innerHTML = '<option value="">(Crafty servers unavailable)</option>';
+    showToast('Could not load Crafty servers', 'error');
+  }
 }
 
 function onCraftyBackendSelect() {
@@ -401,7 +444,7 @@ async function performValidation() {
     let url = `/api/validate-route?hostname=${encodeURIComponent(hostname)}&backend=${encodeURIComponent(backend)}&is_default=${isDefault}`;
     if (domain) url += `&domain=${encodeURIComponent(domain)}`;
     if (routeId) url += `&route_id=${routeId}`;
-    const res = await fetch(url);
+    const res = await apiFetch(url);
     if (!res.ok) throw new Error();
     const d = await res.json();
     currentValidation = d;
@@ -451,64 +494,70 @@ document.addEventListener('DOMContentLoaded', () => {
   const routeForm = document.getElementById('route-form');
   if (!routeForm) return;
 
-  routeForm.addEventListener('submit', async e => {
+  routeForm.addEventListener('submit', e => {
     e.preventDefault();
+    saveRoute();
+  });
+});
 
-    const hostname  = getEffectiveHostname();
-    const backend   = getEffectiveBackend();
-    const isDefault = document.getElementById('f-is-default').checked;
+async function saveRoute() {
+  const routeForm = document.getElementById('route-form');
+  const submitBtn = document.getElementById('route-submit');
+  if (!routeForm || !submitBtn) return;
 
-    // Basic required field check
-    if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
-    if (!backend) { showToast('Backend server is required', 'error'); return; }
+  const hostname  = getEffectiveHostname();
+  const backend   = getEffectiveBackend();
+  const isDefault = document.getElementById('f-is-default').checked;
 
-    // Check for validation errors — warn but allow override
-    if (currentValidation) {
-      const errors = Object.values(currentValidation)
-        .filter(c => c.status === 'error')
-        .map(c => c.message);
-      if (errors.length) {
-        const proceed = confirm('Validation issues found:\n\n' + errors.join('\n') + '\n\nSave anyway?');
-        if (!proceed) return;
-      }
+  // Basic required field check
+  if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
+  if (!backend) { showToast('Backend server is required', 'error'); return; }
+
+  // Check for validation errors — warn but allow override
+  if (currentValidation) {
+    const errors = Object.values(currentValidation)
+      .filter(c => c.status === 'error')
+      .map(c => c.message);
+    if (errors.length) {
+      const proceed = confirm('Validation issues found:\n\n' + errors.join('\n') + '\n\nSave anyway?');
+      if (!proceed) return;
     }
+  }
 
-    const routeId = document.getElementById('f-route-id').value;
+  const routeId = document.getElementById('f-route-id').value;
 
-    const submitBtn = document.getElementById('route-submit');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
 
-    try {
-      const url = routeId ? `/routes/edit/${routeId}` : '/routes/add';
-      const r = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hostname: hostname,
-          backend: backend,
-          is_default: isDefault ? true : false
-        })
-      });
+  try {
+    const url = routeId ? `/routes/edit/${routeId}` : '/routes/add';
+    const r = await apiFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostname: hostname,
+        backend: backend,
+        is_default: isDefault ? true : false
+      })
+    });
 
-      const d = await r.json();
-      if (d.success) {
-        showToast(d.message || 'Route saved successfully', 'success');
-        if (d.warning) showToast(d.warning, 'info', 6000);
-        closeRouteModal();
-        setTimeout(() => window.location.reload(), 800);
-      } else {
-        showToast(d.error || 'Failed to save route', 'error');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
-      }
-    } catch (err) {
-      showToast('Network error: ' + err.message, 'error');
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message || 'Route saved successfully', 'success');
+      if (d.warning) showToast(d.warning, 'info', 6000);
+      closeRouteModal();
+      await refreshRoutesTable();
+    } else {
+      showToast(d.error || 'Failed to save route', 'error', 4000, saveRoute);
       submitBtn.disabled = false;
       submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
     }
-  });
-});
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error', 4000, saveRoute);
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
+  }
+}
 
 // ── Route delete confirm ─────────────────────────────────────────────────────
 let deleteRouteId = null;
@@ -527,21 +576,138 @@ async function submitDeleteRoute() {
   btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
 
   try {
-    const r = await fetch(`/routes/delete/${deleteRouteId}`, { method: 'POST' });
+    const r = await apiFetch(`/routes/delete/${deleteRouteId}`, { method: 'POST' });
     const d = await r.json();
     if (d.success) {
       closeModal('delete-route-modal');
       showToast(d.message || 'Route deleted', 'success');
-      setTimeout(() => window.location.reload(), 800);
+      await refreshRoutesTable();
     } else {
-      showToast(d.error || 'Delete failed', 'error');
+      showToast(d.error || 'Delete failed', 'error', 4000, submitDeleteRoute);
       btn.disabled = false;
       btn.innerHTML = 'Delete Route';
     }
   } catch (err) {
-    showToast('Network error: ' + err.message, 'error');
+    showToast('Network error: ' + err.message, 'error', 4000, submitDeleteRoute);
     btn.disabled = false;
     btn.innerHTML = 'Delete Route';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTES TABLE (in-place refresh, no full-page reload)
+// ══════════════════════════════════════════════════════════════════════════════
+function routeRowHtml(r, index) {
+  const isDocker = r.id == null;
+  const rowId = isDocker ? `docker-${index}` : r.id;
+  const hostname = r.hostname === '__default__' ? '*' : r.hostname;
+  const isDefault = !!r.is_default;
+  const source = r.source || 'static';
+  const backend = r.backend || '';
+  const owner = esc(r.owner_name || '');
+  const healthy = isDocker ? null : r.healthy;
+
+  let healthDot = 'dot-gray';
+  let healthText = 'Not checked';
+  let healthTitle = '';
+  if (isDocker) {
+    healthText = 'Managed by Docker';
+  } else if (healthy === null || healthy === undefined) {
+    healthText = 'Not checked';
+  } else if (healthy) {
+    healthDot = 'dot-green';
+    healthText = 'Reachable';
+  } else {
+    healthDot = 'dot-red';
+    if (r.health_error) {
+      healthText = `Offline — ${esc(r.health_error)}`;
+      healthTitle = r.health_error;
+    } else {
+      healthText = 'Offline';
+    }
+  }
+  const healthTitleAttr = healthTitle ? ` title="${esc(healthTitle)}"` : '';
+
+  const sourceBadge = source === 'docker'
+    ? '<span class="badge badge-docker"><svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><circle cx="12" cy="12" r="10"/></svg> Docker</span>'
+    : '<span class="badge badge-static">Static</span>';
+
+  const defaultBadge = isDefault ? '<span class="badge badge-default">Default</span>' : '';
+
+  let actions = '';
+  if (isDocker) {
+    actions = '<span class="text-muted" style="font-size:11px;">Managed by Docker</span>';
+  } else {
+    const canEdit = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('edit_own_route'));
+    const canDelete = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('delete_own_route'));
+    if (canEdit) {
+      actions += `<button class="btn btn-ghost btn-sm" data-edit-route-id="${r.id}" data-edit-route-hostname="${esc(r.hostname)}" data-edit-route-backend="${esc(backend)}" data-edit-route-default="${isDefault}">` +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Edit</button>';
+    }
+    if (canDelete) {
+      actions += `<button class="btn btn-danger btn-sm" data-delete-route-id="${r.id}" data-delete-route-name="${esc(r.hostname)}">` +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg> Delete</button>';
+    }
+  }
+
+  return `<tr id="row-${rowId}" data-hostname="${esc(r.hostname)}" data-source="${source}" data-backend="${esc(backend)}">` +
+    `<td><div style="display:flex;align-items:center;gap:8px;"><span class="mono text-white">${esc(hostname)}</span>${defaultBadge}</div></td>` +
+    `<td>${sourceBadge}</td>` +
+    `<td><div style="display:flex;align-items:center;gap:6px;"><span class="backend-pill">${esc(backend)}</span>` +
+    `<button class="copy-btn" data-copy="${esc(backend)}" title="Copy backend address">` +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
+    `<td><div class="health-cell" id="health-cell-${rowId}" data-route-id="${isDocker ? '' : r.id}">` +
+    `<div class="dot ${healthDot}" id="health-dot-${rowId}"${healthTitleAttr}></div>` +
+    `<span class="health-label" id="health-text-${rowId}"${healthTitleAttr}>${healthText}</span></div></td>` +
+    `<td><span class="text-white conn-count" id="conn-${rowId}">${r.active_connections ?? 0}</span></td>` +
+    `<td><span class="badge badge-owner">${owner}</span></td>` +
+    `<td class="actions-cell">${actions}</td>` +
+    `</tr>`;
+}
+
+function routesEmptyHtml() {
+  const canCreate = IS_ADMIN || USER_PERMS.has('create_route');
+  return '<div class="empty-state">' +
+    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>' +
+    '<h3>No routes configured</h3>' +
+    '<p>Add your first route to start routing Minecraft traffic to your servers.</p>' +
+    (canCreate ? '<button class="btn btn-primary" onclick="openRouteModal()">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add First Route</button>' : '') +
+    '</div>';
+}
+
+function renderRoutesTable(routes) {
+  const rows = routes.map((r, i) => routeRowHtml(r, i)).join('');
+  const card = document.getElementById('routes-card');
+  const tbody = document.getElementById('routes-body');
+
+  if (!routes.length) {
+    if (card) card.innerHTML = routesEmptyHtml();
+    return;
+  }
+
+  if (tbody) {
+    tbody.innerHTML = rows;
+    return;
+  }
+
+  if (card) {
+    card.innerHTML =
+      '<table class="data-table" aria-label="Route list"><thead><tr>' +
+      '<th>Hostname</th><th>Source</th><th>Backend</th><th>Status</th>' +
+      '<th>Connections</th><th>Owner</th><th style="text-align:right;">Actions</th>' +
+      '</tr></thead><tbody id="routes-body">' + rows + '</tbody></table>';
+  }
+}
+
+async function refreshRoutesTable() {
+  try {
+    const r = await apiFetch('/api/routes');
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'Failed to load routes');
+    renderRoutesTable(d.routes);
+  } catch (err) {
+    showToast('Failed to refresh routes: ' + err.message, 'error');
   }
 }
 
@@ -565,7 +731,7 @@ async function refreshHealth() {
       const id = row.id.replace('row-', '');
       if (!/^\d+$/.test(id)) return;
       try {
-        const r = await fetch(`/api/health/${id}`);
+        const r = await apiFetch(`/api/health/${id}`);
         const d = await r.json();
         
         const healthCell = document.getElementById(`health-cell-${id}`);
@@ -594,7 +760,7 @@ async function refreshHealth() {
     }));
 
     // Refresh connections
-    const connRes = await fetch('/api/connections');
+    const connRes = await apiFetch('/api/connections');
     const connData = await connRes.json();
     let total = 0;
     Object.entries(connData).forEach(([hostname, count]) => {
@@ -628,7 +794,7 @@ async function loadCfRecords() {
   tbody.innerHTML = skeletonRows([120,120,48,100,80]);
 
   try {
-    const r = await fetch('/api/cf/records');
+    const r = await apiFetch('/api/cf/records');
     const d = await r.json();
 
     if (!d.success) {
@@ -687,7 +853,7 @@ async function createCfRecord() {
   if (btn) { btn.classList.add('loading'); btn.disabled = true; }
 
   try {
-    const r = await fetch('/api/cf/records', {
+    const r = await apiFetch('/api/cf/records', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hostname, ip: '' })
@@ -707,10 +873,31 @@ async function createCfRecord() {
   }
 }
 
-async function deleteCfRecord(id, name) {
-  if (!confirm(`Delete DNS record for "${name}"?`)) return;
+let confirmCallback = null;
+
+function confirmAction(title, text, okLabel, callback) {
+  const titleEl = document.getElementById('confirm-modal-title');
+  const textEl = document.getElementById('confirm-modal-text');
+  const okEl = document.getElementById('confirm-modal-ok');
+  if (titleEl) titleEl.textContent = title;
+  if (textEl) textEl.textContent = text;
+  if (okEl) okEl.textContent = okLabel || 'Confirm';
+  confirmCallback = callback;
+  openModal('confirm-modal');
+}
+
+function deleteCfRecord(id, name) {
+  confirmAction(
+    'Delete DNS Record',
+    `Delete DNS record for "${name}"? This action cannot be undone.`,
+    'Delete Record',
+    () => doDeleteCfRecord(id, name),
+  );
+}
+
+async function doDeleteCfRecord(id, name) {
   try {
-    const r = await fetch(`/api/cf/records/${id}`, { method: 'DELETE' });
+    const r = await apiFetch(`/api/cf/records/${id}`, { method: 'DELETE' });
     const d = await r.json();
     if (d.success) {
       showToast(`Record ${name} deleted`, 'success');
@@ -734,7 +921,7 @@ async function loadCraftyServers() {
   tbody.innerHTML = skeletonRows([80,64,80,120,64,80]);
 
   try {
-    const r = await fetch('/api/crafty/servers');
+    const r = await apiFetch('/api/crafty/servers');
     const d = await r.json();
 
     if (!d.success) {
@@ -826,7 +1013,7 @@ async function craftyAction(serverId, action, btn) {
   try {
     const fd = new FormData();
     fd.append('action', action);
-    const r = await fetch(`/api/crafty/servers/${serverId}/action`, { method: 'POST', body: fd });
+    const r = await apiFetch(`/api/crafty/servers/${serverId}/action`, { method: 'POST', body: fd });
     const d = await r.json();
     if (d.success) {
       showToast(d.message || `Server ${action} sent`, 'success');
@@ -975,7 +1162,7 @@ async function submitCraftyPort() {
   if (restart) fd.append('restart', '1');
 
   try {
-    const r = await fetch(`/api/crafty/servers/${serverId}/port`, { method: 'POST', body: fd });
+    const r = await apiFetch(`/api/crafty/servers/${serverId}/port`, { method: 'POST', body: fd });
     const d = await r.json();
     if (d.success) {
       await animateSteps(d);
@@ -1015,7 +1202,7 @@ async function loadUsersList(force) {
   tbody.innerHTML = skeletonRows([120,64,100,80,80]);
 
   try {
-    const r = await fetch('/api/users');
+    const r = await apiFetch('/api/users');
     if (r.status === 401) {
       window.location.href = '/login';
       return;
@@ -1114,7 +1301,7 @@ async function submitUserForm() {
 
   try {
     const url = id ? `/users/edit/${id}` : '/users/add';
-    const r = await fetch(url, {
+    const r = await apiFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, role })
@@ -1149,7 +1336,7 @@ async function submitDeleteUser() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
   try {
-    const r = await fetch(`/users/delete/${id}`, { method: 'POST' });
+    const r = await apiFetch(`/users/delete/${id}`, { method: 'POST' });
     const d = await r.json();
     if (d.success) {
       closeModal('delete-user-modal');
@@ -1176,7 +1363,7 @@ async function openPermModal(userId, username) {
   openModal('perm-modal');
 
   try {
-    const r = await fetch(`/api/permissions/${userId}`);
+    const r = await apiFetch(`/api/permissions/${userId}`);
     const d = await r.json();
     const userPerms = new Set(d.permissions || []);
 
@@ -1207,7 +1394,7 @@ async function savePermissions() {
   btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
 
   try {
-    const r = await fetch(`/api/permissions/${userId}`, {
+    const r = await apiFetch(`/api/permissions/${userId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permissions: perms })
@@ -1252,7 +1439,7 @@ function relTime(isoString) {
 
 function bindDynamicActions() {
   document.addEventListener('click', event => {
-    const target = event.target.closest('[data-copy], [data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id]');
+    const target = event.target.closest('[data-copy], [data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id], [data-edit-route-id], [data-delete-route-id]');
     if (!target) return;
 
     if (target.dataset.copy !== undefined) {
@@ -1277,8 +1464,29 @@ function bindDynamicActions() {
       );
     } else if (target.dataset.deleteUserId) {
       confirmDeleteUser(target.dataset.deleteUserId, target.dataset.deleteUserName);
+    } else if (target.dataset.editRouteId !== undefined) {
+      openEditRouteModal(
+        Number(target.dataset.editRouteId),
+        target.dataset.editRouteHostname,
+        target.dataset.editRouteBackend,
+        target.dataset.editRouteDefault === 'true',
+      );
+    } else if (target.dataset.deleteRouteId !== undefined) {
+      confirmDeleteRoute(Number(target.dataset.deleteRouteId), target.dataset.deleteRouteName);
     }
   });
+
+  const confirmOk = document.getElementById('confirm-modal-ok');
+  if (confirmOk) {
+    confirmOk.addEventListener('click', () => {
+      closeModal('confirm-modal');
+      if (typeof confirmCallback === 'function') {
+        const cb = confirmCallback;
+        confirmCallback = null;
+        cb();
+      }
+    });
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1325,12 +1533,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // ═══════════════════════════════════════════════════════════════════════════
   // SSE — real-time event stream, replaces polling
   // ═══════════════════════════════════════════════════════════════════════════
+  function sseStatus(online) {
+    let banner = document.getElementById('sse-banner');
+    if (online) {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'sse-banner';
+      banner.className = 'sse-banner';
+      banner.textContent = 'Reconnecting to live updates…';
+      document.body.appendChild(banner);
+    }
+  }
+
   function connectSSE() {
     const evtSource = new EventSource('/api/events');
 
     evtSource.addEventListener('connected', () => {
       console.debug('[SSE] Connected');
     });
+
+    evtSource.onopen = () => sseStatus(true);
 
     evtSource.addEventListener('connections', (e) => {
       try {
@@ -1354,7 +1579,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = JSON.parse(e.data);
         if (data.reason === 'crafty_port_change') return;
       } catch {}
-      setTimeout(() => window.location.reload(), 1000);
+      refreshRoutesTable();
     });
 
     evtSource.onerror = () => {
@@ -1362,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (evtSource.readyState === EventSource.CLOSED) {
         window.location.href = '/login';
       } else {
-        console.debug('[SSE] Connection error, reconnecting...');
+        sseStatus(false);
       }
     };
   }

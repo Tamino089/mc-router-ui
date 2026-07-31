@@ -158,6 +158,22 @@ body::before {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+/* ── Password show/hide toggle ──────────────────────────────────────────────── */
+.password-wrap { position: relative; }
+.password-wrap input { padding-right: 44px; }
+.password-toggle {
+  position: absolute; top: 50%; right: 6px;
+  transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  background: transparent;
+  border: none; border-radius: var(--r-md);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.password-toggle:hover { color: var(--text); background: rgba(128, 128, 128, 0.12); }
+
 /* ── Submit button ────────────────────────────────────────────────────────────── */
 .btn-login {
   width: 100%; margin-top: 8px;

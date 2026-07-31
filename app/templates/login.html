@@ -8,7 +8,7 @@
 <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/css/login.css?v=4">
+<link rel="stylesheet" href="/static/css/login.css?v=5">
 <script>(function(){var t=localStorage.getItem('mc-theme')||'dark';document.documentElement.dataset.theme=t;})();</script>
 </head>
 <body>
@@ -41,14 +41,22 @@
     </div>
     <div class="form-group">
       <label for="password">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autocomplete="current-password"
-        required
-        placeholder="••••••••"
-      >
+      <div class="password-wrap">
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          placeholder="••••••••"
+        >
+        <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17" aria-hidden="true">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
     </div>
     <button type="submit" class="btn-login" id="submit-btn">Sign In</button>
   </form>
@@ -61,6 +69,15 @@ document.getElementById('login-form').addEventListener('submit', function() {
   const btn = document.getElementById('submit-btn');
   btn.textContent = 'Signing in…';
   btn.classList.add('loading');
+});
+
+const pwInput = document.getElementById('password');
+const pwToggle = document.getElementById('password-toggle');
+pwToggle.addEventListener('click', () => {
+  const show = pwInput.type === 'password';
+  pwInput.type = show ? 'text' : 'password';
+  pwToggle.setAttribute('aria-pressed', String(show));
+  pwToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
 });
 </script>
 </body>

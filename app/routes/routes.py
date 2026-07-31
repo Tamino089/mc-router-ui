@@ -6,9 +6,10 @@ import asyncio
 import logging
 import sqlite3
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app.core import config
 from app.core.security import current_user
 from app.core.validation import (
     HOSTNAME_RE,
@@ -17,11 +18,13 @@ from app.core.validation import (
     parse_backend,
     valid_ip_port,
 )
+from app.db import schema
 from app.db.database import get_db
 from app.db.schema import user_has_perm
 from app.routes import get_form_or_json
 from app.services import cloudflare, docker_watcher, mc_router
 from app.services.health import tcp_check
+from app.services.routes_data import build_routes_payload
 from app.services.sse import broadcast
 
 logger = logging.getLogger(__name__)
@@ -470,3 +473,17 @@ async def delete_route(request: Request, route_id: int):
     await broadcast("route-change", {"action": "delete", "route_id": route_id, "hostname": hostname})
 
     return JSONResponse({"success": True, "message": "Route deleted successfully"})
+
+
+@router.get("/api/routes")
+async def list_routes(request: Request):
+    """JSON route list for the dashboard (permission-aware, incl. Docker routes)."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.get("role") == "admin":
+        user_perms = set(config.ALL_PERMISSIONS)
+    else:
+        user_perms = schema.get_user_perms(user["id"])
+    routes_data = await build_routes_payload(user, user_perms)
+    return JSONResponse({"success": True, "routes": routes_data})
