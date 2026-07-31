@@ -1307,12 +1307,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const initialTab = (tabParam === 'settings') ? 'settings' : 'routes';
   switchTab(initialTab);
 
-  // Flash message toasts from query params
-  if (params.get('success')) showToast(decodeURIComponent(params.get('success')), 'success');
-  if (params.get('error'))   showToast(decodeURIComponent(params.get('error')), 'error');
-  if (params.get('pw_success')) showToast('Password updated successfully', 'success');
-  if (params.get('pw_error'))   showToast(decodeURIComponent(params.get('pw_error')), 'error');
-
   // Clean URL params without reload
   if (params.toString()) {
     const clean = window.location.pathname;

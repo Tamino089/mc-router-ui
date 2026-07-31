@@ -154,6 +154,13 @@ def init_db() -> str:
             (config.ADMIN_USER.lower(), hashed),
         )
         con.execute("DELETE FROM settings WHERE key='admin_password'")
+        if password == "changeme":
+            logger.critical(
+                "Admin account '%s' created with the DEFAULT password. Set "
+                "ADMIN_PASSWORD when starting the container and change the "
+                "password in Settings as soon as possible.",
+                config.ADMIN_USER.lower(),
+            )
     else:
         # ADMIN_PASSWORD bootstraps a missing admin only. Reapplying it here
         # would overwrite passwords changed through the UI on every restart.

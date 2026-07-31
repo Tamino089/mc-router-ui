@@ -44,13 +44,6 @@ async def crafty_request(method: str, path: str, **kwargs):
 
     crafty_token = token_row[0].strip()
 
-    if len(crafty_token) > 8:
-        masked_token = f"{crafty_token[:4]}...{crafty_token[-4:]}"
-    elif crafty_token:
-        masked_token = "***"
-    else:
-        masked_token = "None"
-
     headers = {
         "Authorization": f"Bearer {crafty_token}",
         "Content-Type": "application/json",
@@ -58,9 +51,9 @@ async def crafty_request(method: str, path: str, **kwargs):
 
     url = f"{crafty_url}/api/v2{path}"
 
-    logger.info(
-        "[Crafty Request] %s %s (Token: %s)", method.upper(), url, masked_token
-    )
+    # Note: deliberately no token in this log line — even a masked
+    # first4...last4 prefix/suffix of the secret is useful to an attacker.
+    logger.info("[Crafty Request] %s %s", method.upper(), url)
 
     try:
         async with httpx.AsyncClient(verify=CRAFTY_VERIFY_TLS, timeout=10) as client:

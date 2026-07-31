@@ -19,6 +19,7 @@ from app.services.sse import sse_emitter_loop
 
 # Routers
 from app.routes import auth, cloudflare_api, crafty_api, events, healthz, monitoring, routes, settings, users
+from app.routes import get_flash
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -29,8 +30,15 @@ logger = logging.getLogger(__name__)
 try:
     secret_key = schema.init_db()
 except Exception:
-    logger.exception("Failed to initialize database at import time")
-    secret_key = "fallback-insecure-key-please-set-secret-key"
+    # A persistent SECRET_KEY (env var or generated-and-stored in the DB) is
+    # required to sign session cookies. Falling back to a hardcoded key would
+    # let anyone forge sessions, so fail fast with a clear message instead.
+    logger.critical(
+        "Failed to initialize database at import time. Refusing to start with "
+        "an insecure fallback session key. Check that DB_PATH (%s) is writable.",
+        config.DB_PATH,
+    )
+    raise
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -110,6 +118,8 @@ async def dashboard(request: Request):
         return RedirectResponse(url="/login", status_code=303)
 
     user_perms = schema.get_user_perms(user["id"]) if user["role"] != "admin" else set(config.ALL_PERMISSIONS)
+
+    flash = get_flash(request)
 
     with get_db() as con:
         # Load routes from DB (static sources)
@@ -229,6 +239,7 @@ async def dashboard(request: Request):
             "request": request,
             "current_user": user,
             "user_perms": user_perms,
+            "flash": flash,
             "all_permissions": config.ALL_PERMISSIONS,
             "routes": routes_data,
             "total_connections": total_connections,
