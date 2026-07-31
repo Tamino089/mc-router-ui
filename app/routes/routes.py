@@ -144,9 +144,11 @@ async def add_route(request: Request):
                     status_code=409,
                 )
 
-        # Step 1: Check DB uniqueness first — before any external side effects
+        # Step 1: Check DB uniqueness + snapshot the current default, holding a
+        # write lock so concurrent creates serialize instead of racing each other.
         old_default = None
         with get_db() as con:
+            con.execute("BEGIN IMMEDIATE")
             existing = con.execute(
                 "SELECT id FROM routes WHERE hostname=?", (hostname,)
             ).fetchone()
@@ -156,6 +158,7 @@ async def add_route(request: Request):
                 old_default = con.execute(
                     "SELECT id, backend FROM routes WHERE is_default=1"
                 ).fetchone()
+            con.commit()
 
         # Step 2: Create DNS record (rollback if later steps fail)
         dns_done = False
@@ -178,20 +181,11 @@ async def add_route(request: Request):
                 await cloudflare.cf_delete_record_by_hostname(hostname)
             return JSONResponse({"success": False, "error": f"mc-router sync failed: {err}"}, status_code=500)
 
-        # Step 4: Save to DB (final — source of truth)
+        # Step 4: Save to DB (final — source of truth). INSERT OR IGNORE makes
+        # the uniqueness check and insert atomic: even if another request snuck
+        # a row in after step 1, rowcount==0 tells us here and we roll back.
         try:
             with get_db() as con:
-                # Double-check uniqueness (minimises TOCTOU window)
-                existing = con.execute(
-                    "SELECT id FROM routes WHERE hostname=?", (hostname,)
-                ).fetchone()
-                if existing:
-                    if dns_done:
-                        await cloudflare.cf_delete_record_by_hostname(hostname)
-                    if not is_def:
-                        await mc_router.delete_route(hostname)
-                    return JSONResponse({"success": False, "error": "Route already exists"}, status_code=409)
-
                 if is_def and old_default:
                     con.execute(
                         "UPDATE routes SET is_default=0 WHERE id=?",
@@ -199,9 +193,20 @@ async def add_route(request: Request):
                     )
 
                 cur = con.execute(
-                    "INSERT INTO routes (hostname, backend, is_default, source, owner_id) VALUES (?, ?, ?, 'static', ?)",
+                    "INSERT OR IGNORE INTO routes (hostname, backend, is_default, source, owner_id) VALUES (?, ?, ?, 'static', ?)",
                     (hostname, backend, int(is_def), user["id"]),
                 )
+                if cur.rowcount == 0:
+                    if dns_done:
+                        await cloudflare.cf_delete_record_by_hostname(hostname)
+                    if not is_def:
+                        await mc_router.delete_route(hostname)
+                    else:
+                        if old_default:
+                            await mc_router.push_default(old_default["backend"])
+                        logger.warning("Route %s was created concurrently — rolled back external state", hostname)
+                    return JSONResponse({"success": False, "error": "Route already exists (concurrent creation)"}, status_code=409)
+
                 route_id = cur.lastrowid
                 con.commit()
         except sqlite3.IntegrityError:
@@ -318,14 +323,18 @@ async def edit_route(request: Request, route_id: int):
     # Read existing route + validate ownership + check hostname uniqueness
     # in a single transaction to prevent TOCTOU races
     #
-    # cf_err/dns_done are defined here (not inside the try) so that if an
+    # cf_err/dns_done/old_* are defined here (not inside the try) so that if an
     # exception is raised before they're assigned below, the `except` block's
     # rollback logic doesn't itself crash with a NameError and mask the real
     # error.
     cf_err = None
     dns_done = False
+    old_hostname = None
+    old_backend = None
+    old_is_default = False
     try:
         with get_db() as con:
+            con.execute("BEGIN IMMEDIATE")
             r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
             if not r_row:
                 return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
@@ -387,11 +396,24 @@ async def edit_route(request: Request, route_id: int):
                 await cloudflare.cf_delete_record_by_hostname(old_hostname)
     except Exception:
         logger.exception("Error editing route %d", route_id)
-        # Best-effort rollback: DNS new record + mc-router push
+        # Best-effort rollback: undo the NEW mc-router/DNS state, then restore
+        # the OLD route so the router is never left without a route for this host.
         if not is_def and dns_done:
             await cloudflare.cf_delete_record_by_hostname(hostname)
-        if not is_def:
-            await mc_router.delete_route(hostname)
+        restore_err = None
+        if old_backend is not None:
+            if is_def:
+                # A new default was pushed; restore the previous default.
+                restore_err = await mc_router.push_default(old_backend)
+            else:
+                # The new hostname route was pushed; remove it and restore the old.
+                await mc_router.delete_route(hostname)
+                if old_is_default:
+                    restore_err = await mc_router.push_default(old_backend)
+                elif old_hostname:
+                    restore_err = await mc_router.push_route(old_hostname, old_backend)
+        if restore_err:
+            logger.error("Failed to restore route after edit rollback: %s", restore_err)
         return JSONResponse({"success": False, "error": "Failed to update route — changes rolled back"}, status_code=500)
 
     await _trigger_health_check(route_id, backend)
