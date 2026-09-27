@@ -1,19 +1,15 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   MC Router UI — Dashboard JavaScript
-   All logic extracted from index.html — English UI
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* Dashboard behaviour. */
 
 'use strict';
 
-// ── Constants injected by template (window.MC_UI_CONFIG) ─────────────────────
+// Constants injected by template (window.MC_UI_CONFIG)
 const IS_ADMIN   = window.MC_UI_CONFIG?.isAdmin ?? false;
 const USER_ID    = window.MC_UI_CONFIG?.userId ?? 0;
 const USER_PERMS = new Set(window.MC_UI_CONFIG?.userPerms ?? []);
 const ALL_PERMS  = window.MC_UI_CONFIG?.allPerms ?? [];
 const CF_ENABLED = window.MC_UI_CONFIG?.cfEnabled ?? false;
-const DOCKER_ENABLED = window.MC_UI_CONFIG?.dockerEnabled ?? false;
 
-// ── Permission labels ─────────────────────────────────────────────────────────
+// Permission labels
 const PERM_LABELS = {
   see_own_routes:    'View own routes',
   see_all_routes:    'View all routes',
@@ -29,9 +25,7 @@ const PERM_LABELS = {
   manage_settings:   'Manage settings',
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
-// API FETCH WITH TIMEOUT
-// ══════════════════════════════════════════════════════════════════════════════
+// API fetch with timeout
 const FETCH_TIMEOUT_MS = 15000;
 
 async function apiFetch(url, options = {}) {
@@ -51,9 +45,7 @@ async function apiFetch(url, options = {}) {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TOAST NOTIFICATIONS
-// ══════════════════════════════════════════════════════════════════════════════
+// Toast notifications
 function showToast(message, type = 'info', duration = 4000, retryFn = null) {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -61,19 +53,32 @@ function showToast(message, type = 'info', duration = 4000, retryFn = null) {
   const icons = { success: '✓', error: '⚠', info: 'ℹ' };
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
+  // Actionable failures deserve an assertive announcement.
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
   const icon = document.createElement('span');
+  icon.setAttribute('aria-hidden', 'true');
   icon.textContent = icons[type] || 'ℹ';
   const content = document.createElement('span');
   content.textContent = String(message);
   toast.append(icon, content);
 
+  const dismiss = () => {
+    toast.classList.add('toast-out');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  };
+
+  let timer = null;
   if (type === 'error' && typeof retryFn === 'function') {
     const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
     retryBtn.className = 'toast-retry';
     retryBtn.textContent = 'Retry';
     retryBtn.addEventListener('click', () => {
-      toast.classList.add('toast-out');
-      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      // Cancel the pending auto-dismiss so the timer cannot fire on a
+      // detached node after the retry already removed the toast.
+      clearTimeout(timer);
+      dismiss();
       retryFn();
     });
     toast.appendChild(retryBtn);
@@ -81,43 +86,45 @@ function showToast(message, type = 'info', duration = 4000, retryFn = null) {
   }
 
   container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add('toast-out');
-    toast.addEventListener('animationend', () => toast.remove(), { once: true });
-  }, duration);
+  timer = setTimeout(dismiss, duration);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SKELETON LOADING ROWS
-// ══════════════════════════════════════════════════════════════════════════════
-function skeletonRows(widths) {
+// Skeleton loading rows
+function skeletonRows(widths, columns) {
   const rows = [];
+  // columns defaults to the number of widths so the placeholder never leaves a
+  // stray cell when the Actions column is hidden.
+  const span = columns || widths.length;
   for (let i = 0; i < 4; i++) {
     const cells = widths.map(w => `<td><div class="skeleton-cell w${w}"></div></td>`).join('');
-    rows.push(`<tr class="skeleton-row">${cells}</tr>`);
+    rows.push(`<tr class="skeleton-row"><td colspan="${span}" class="skeleton-span">${cells}</td></tr>`);
   }
   return rows.join('');
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// COPY TO CLIPBOARD
-// ══════════════════════════════════════════════════════════════════════════════
+// Copy to clipboard
 async function copyToClipboard(text, btn) {
+  // Captured before the await: a second click while the first is in flight
+  // would otherwise store the confirmation icon as the "original" markup.
+  const original = btn.innerHTML;
   try {
     await navigator.clipboard.writeText(text);
-    const orig = btn.innerHTML;
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">' +
+      '<polyline points="20 6 9 17 4 12"/></svg>';
     btn.style.color = 'var(--green)';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+    btn.setAttribute('aria-label', 'Copied');
+    setTimeout(() => {
+      btn.innerHTML = original;
+      btn.style.color = '';
+      btn.setAttribute('aria-label', 'Copy to clipboard');
+    }, 1500);
   } catch {
     showToast('Copy failed', 'error');
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TAB SWITCHING
-// ══════════════════════════════════════════════════════════════════════════════
+// Tab switching
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -143,9 +150,7 @@ function switchTab(name) {
   if (name === 'settings') loadUsersList();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MODAL HELPERS
-// ══════════════════════════════════════════════════════════════════════════════
+// Modal helpers
 function openModal(id) {
   const el = document.getElementById(id);
   if (el) {
@@ -172,8 +177,10 @@ function closeModal(id) {
 // Close on overlay click
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.modal-overlay').forEach(o => {
-    o.addEventListener('click', e => { 
-      if (e.target === o && o.id !== 'wizard-modal') o.classList.remove('open'); 
+    o.addEventListener('click', e => {
+      // Goes through closeModal so focus returns to the trigger and the
+      // active-modal state is cleared for the focus trap.
+      if (e.target === o && o.id !== 'wizard-modal') closeModal(o.id);
     });
   });
 });
@@ -202,15 +209,13 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Basic focus trap
+// Focus trap
 function trapFocus(el) {
   const focusable = el.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
   if (focusable.length) focusable[0].focus();
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// THEME TOGGLE
-// ══════════════════════════════════════════════════════════════════════════════
+// Theme toggle
 function toggleTheme() {
   const current = document.documentElement.dataset.theme || 'dark';
   const next = current === 'dark' ? 'light' : 'dark';
@@ -218,9 +223,7 @@ function toggleTheme() {
   localStorage.setItem('mc-theme', next);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ROUTE MODAL (simplified — single hostname + backend input, no confirm step)
-// ══════════════════════════════════════════════════════════════════════════════
+// Route create and edit modal
 let craftyServers = [];
 let craftyContainerHost = '';
 let validationTimer = null;
@@ -311,12 +314,12 @@ async function openEditRouteModal(id, hostname, backend, isDefault) {
   await loadCraftyBackendSelect();
   const sel = document.getElementById('f-backend-select');
   const input = document.getElementById('f-backend');
-  if (sel.style.display !== 'none') {
+  if (!sel.classList.contains('u-hidden')) {
     sel.value = backend;
-    // If backend isn't in the dropdown options, fall back to text input
+    // Falls back to the text input when the backend is not one of the options.
     if (sel.value !== backend) {
-      sel.style.display = 'none';
-      input.style.display = '';
+      sel.classList.add('u-hidden');
+      input.classList.remove('u-hidden');
     }
   }
   input.value = backend;
@@ -356,11 +359,15 @@ async function loadCraftyBackendSelect() {
       sel.appendChild(opt);
     });
 
-    sel.style.display = '';
-    input.style.display = 'none';
+    sel.classList.remove('u-hidden');
+    input.classList.add('u-hidden');
   } catch {
     craftyServers = [];
     sel.innerHTML = '<option value="">(Crafty servers unavailable)</option>';
+    // Keep the text input usable: it may have been hidden by an earlier
+    // successful call, leaving no way to enter a backend.
+    sel.classList.add('u-hidden');
+    input.classList.remove('u-hidden');
     showToast('Could not load Crafty servers', 'error');
   }
 }
@@ -405,13 +412,15 @@ function getEffectiveBackend() {
   return document.getElementById('f-backend').value.trim();
 }
 
-// ── Live validation ──────────────────────────────────────────────────────────
+// Live validation
 function resetValidation() {
   ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.className = 'validation-item val-neutral';
     el.querySelector('.v-indicator').textContent = '?';
+    const detail = el.querySelector('.v-message');
+    if (detail) detail.textContent = '';
   });
   currentValidation = null;
   const preview = document.getElementById('hostname-preview');
@@ -426,6 +435,9 @@ function updateValidation(fieldId, status, message) {
   const icons = { checking: '', success: '✓', warning: '⚠', error: '✕' };
   indicator.textContent = icons[status] ?? '?';
   el.title = message;
+  // The message is shown inline, not only as a tooltip.
+  const detail = el.querySelector('.v-message');
+  if (detail) detail.textContent = message || '';
 }
 
 async function performValidation() {
@@ -489,7 +501,7 @@ function triggerValidation() {
   validationTimer = setTimeout(performValidation, 150);
 }
 
-// Route form submit — fetch with JSON body
+// Route form submit - fetch with JSON body
 document.addEventListener('DOMContentLoaded', () => {
   const routeForm = document.getElementById('route-form');
   if (!routeForm) return;
@@ -513,7 +525,7 @@ async function saveRoute() {
   if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
   if (!backend) { showToast('Backend server is required', 'error'); return; }
 
-  // Check for validation errors — warn but allow override
+  // Check for validation errors - warn but allow override
   if (currentValidation) {
     const errors = Object.values(currentValidation)
       .filter(c => c.status === 'error')
@@ -527,7 +539,7 @@ async function saveRoute() {
   const routeId = document.getElementById('f-route-id').value;
 
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
+  submitBtn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
 
   try {
     const url = routeId ? `/routes/edit/${routeId}` : '/routes/add';
@@ -559,7 +571,7 @@ async function saveRoute() {
   }
 }
 
-// ── Route delete confirm ─────────────────────────────────────────────────────
+// Route deletion
 let deleteRouteId = null;
 
 function confirmDeleteRoute(id, hostname) {
@@ -573,7 +585,7 @@ async function submitDeleteRoute() {
   if (!deleteRouteId) return;
   const btn = document.getElementById('delete-route-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Deleting…';
 
   try {
     const r = await apiFetch(`/routes/delete/${deleteRouteId}`, { method: 'POST' });
@@ -594,10 +606,10 @@ async function submitDeleteRoute() {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// ROUTES TABLE (in-place refresh, no full-page reload)
-// ══════════════════════════════════════════════════════════════════════════════
+// Routes table, refreshed in place
 function routeRowHtml(r, index) {
+  // Only rows without a database id are read-only; a stored route that also
+  // carries the docker source stays editable, as the server-rendered table does.
   const isDocker = r.id == null;
   const rowId = isDocker ? `docker-${index}` : r.id;
   const hostname = r.hostname === '__default__' ? '*' : r.hostname;
@@ -636,43 +648,43 @@ function routeRowHtml(r, index) {
 
   let actions = '';
   if (isDocker) {
-    actions = '<span class="text-muted" style="font-size:11px;">Managed by Docker</span>';
+    actions = '<span class="text-muted u-fs-11">Managed by Docker</span>';
   } else {
     const canEdit = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('edit_own_route'));
     const canDelete = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('delete_own_route'));
     if (canEdit) {
-      actions += `<button class="btn btn-ghost btn-sm" data-edit-route-id="${r.id}" data-edit-route-hostname="${esc(r.hostname)}" data-edit-route-backend="${esc(backend)}" data-edit-route-default="${isDefault}">` +
+      actions += `<button type="button" class="btn btn-ghost btn-sm" data-edit-route-id="${r.id}" data-edit-route-hostname="${esc(r.hostname)}" data-edit-route-backend="${esc(backend)}" data-edit-route-default="${isDefault}">` +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Edit</button>';
     }
     if (canDelete) {
-      actions += `<button class="btn btn-danger btn-sm" data-delete-route-id="${r.id}" data-delete-route-name="${esc(r.hostname)}">` +
+      actions += `<button type="button" class="btn btn-danger btn-sm" data-delete-route-id="${r.id}" data-delete-route-name="${esc(r.hostname)}">` +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg> Delete</button>';
     }
   }
 
   return `<tr id="row-${rowId}" data-hostname="${esc(r.hostname)}" data-source="${source}" data-backend="${esc(backend)}">` +
-    `<td><div style="display:flex;align-items:center;gap:8px;"><span class="mono text-white">${esc(hostname)}</span>${defaultBadge}</div></td>` +
+    `<td><div class="u-row"><span class="mono text-white">${esc(hostname)}</span>${defaultBadge}</div></td>` +
     `<td>${sourceBadge}</td>` +
-    `<td><div style="display:flex;align-items:center;gap:6px;"><span class="backend-pill">${esc(backend)}</span>` +
-    `<button class="copy-btn" data-copy="${esc(backend)}" title="Copy backend address">` +
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
+    `<td><div class="u-row-tight"><span class="backend-pill">${esc(backend)}</span>` +
+    `<button type="button" class="copy-btn" data-copy="${esc(backend)}" title="Copy backend address" aria-label="Copy backend address">` +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
     `<td><div class="health-cell" id="health-cell-${rowId}" data-route-id="${isDocker ? '' : r.id}">` +
     `<div class="dot ${healthDot}" id="health-dot-${rowId}"${healthTitleAttr}></div>` +
     `<span class="health-label" id="health-text-${rowId}"${healthTitleAttr}>${healthText}</span></div></td>` +
     `<td><span class="text-white conn-count" id="conn-${rowId}">${r.active_connections ?? 0}</span></td>` +
-    `<td><span class="badge badge-owner">${owner}</span></td>` +
+    `<td><span class="badge badge-owner">${esc(owner)}</span></td>` +
     `<td class="actions-cell">${actions}</td>` +
     `</tr>`;
 }
 
 function routesEmptyHtml() {
   const canCreate = IS_ADMIN || USER_PERMS.has('create_route');
-  return '<div class="empty-state">' +
-    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>' +
+  return '<div class="empty-state" id="routes-empty">' +
+    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>' +
     '<h3>No routes configured</h3>' +
     '<p>Add your first route to start routing Minecraft traffic to your servers.</p>' +
-    (canCreate ? '<button class="btn btn-primary" onclick="openRouteModal()">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add First Route</button>' : '') +
+    (canCreate ? '<button type="button" class="btn btn-primary" data-action="open-route-modal">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add First Route</button>' : '') +
     '</div>';
 }
 
@@ -687,15 +699,29 @@ function renderRoutesTable(routes) {
   }
 
   if (tbody) {
+    // Preserve keyboard focus across the innerHTML swap so a refresh cannot
+    // move focus to the body or shift buttons under the pointer.
+    const focused = document.activeElement;
+    const focusKey =
+      focused && tbody.contains(focused)
+        ? `${focused.tagName}:${focused.dataset.action || ''}:${focused.dataset.editRouteId || focused.dataset.deleteRouteId || ''}`
+        : null;
     tbody.innerHTML = rows;
+    if (focusKey) {
+      const restored = [...tbody.querySelectorAll('button')].find(
+        b => `${b.tagName}:${b.dataset.action || ''}:${b.dataset.editRouteId || b.dataset.deleteRouteId || ''}` === focusKey,
+      );
+      if (restored) restored.focus();
+    }
     return;
   }
 
   if (card) {
     card.innerHTML =
       '<table class="data-table" aria-label="Route list"><thead><tr>' +
-      '<th>Hostname</th><th>Source</th><th>Backend</th><th>Status</th>' +
-      '<th>Connections</th><th>Owner</th><th style="text-align:right;">Actions</th>' +
+      '<th scope="col">Hostname</th><th scope="col">Source</th><th scope="col">Backend</th>' +
+      '<th scope="col">Status</th><th scope="col">Connections</th><th scope="col">Owner</th>' +
+      '<th scope="col" class="u-text-right">Actions</th>' +
       '</tr></thead><tbody id="routes-body">' + rows + '</tbody></table>';
   }
 }
@@ -718,11 +744,9 @@ function craftyHealthError(backend) {
   return null;
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// HEALTH / STATUS REFRESH
-// ══════════════════════════════════════════════════════════════════════════════
+// Health and status refresh
 async function refreshHealth() {
-  const btn = document.querySelector('[onclick="refreshHealth()"]');
+  const btn = document.querySelector('[data-action="refresh-health"]');
   if (btn) { btn.classList.add('loading'); btn.disabled = true; }
 
   try {
@@ -762,19 +786,15 @@ async function refreshHealth() {
     // Refresh connections
     const connRes = await apiFetch('/api/connections');
     const connData = await connRes.json();
-    let total = 0;
     Object.entries(connData).forEach(([hostname, count]) => {
-      const rows2 = document.querySelectorAll('[data-hostname]');
-      rows2.forEach(r => {
-        if (r.dataset.hostname === hostname) {
-          const connEl = r.querySelector('.conn-count');
+      document.querySelectorAll('[data-hostname]').forEach(row => {
+        if (row.dataset.hostname === hostname) {
+          const connEl = row.querySelector('.conn-count');
           if (connEl) connEl.textContent = count;
         }
       });
-      total += count;
     });
-    const tabCount = document.getElementById('tab-count-routes');
-    if (tabCount) tabCount.textContent = total;
+    updateConnectionTotal();
 
   } catch {
     showToast('Failed to refresh health status', 'error');
@@ -783,9 +803,7 @@ async function refreshHealth() {
   if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CLOUDFLARE DNS
-// ══════════════════════════════════════════════════════════════════════════════
+// Cloudflare DNS
 async function loadCfRecords() {
   const tbody = document.getElementById('cf-tbody');
   const countEl = document.getElementById('cf-record-count');
@@ -798,14 +816,14 @@ async function loadCfRecords() {
     const d = await r.json();
 
     if (!d.success) {
-      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">${esc(d.error || 'Cloudflare request failed')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="table-msg-error">${esc(d.error || 'Cloudflare request failed')}</td></tr>`;
       return;
     }
 
     const canManage = IS_ADMIN || USER_PERMS.has('manage_cloudflare');
 
     if (!d.records.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">No DNS records found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="table-msg">No DNS records found</td></tr>';
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -819,8 +837,8 @@ async function loadCfRecords() {
           <td><span class="mono text-white">${esc(rec.name)}</span></td>
           <td>
             <span class="backend-pill">${esc(rec.content)}</span>
-            <button class="copy-btn" data-copy="${esc(rec.content)}" title="Copy IP">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="copy-btn" data-copy="${esc(rec.content)}" title="Copy IP" aria-label="Copy IP address">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
             </button>
@@ -828,15 +846,15 @@ async function loadCfRecords() {
           <td class="text-muted">${rec.ttl === 1 ? 'Auto' : rec.ttl + 's'}</td>
           <td><span class="ts-rel">${ts}</span></td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-danger btn-sm" data-cf-id="${esc(rec.id)}" data-cf-name="${esc(rec.name)}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            <button type="button" class="btn btn-danger btn-sm" data-cf-id="${esc(rec.id)}" data-cf-name="${esc(rec.name)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
               Delete
             </button>
           </td>` : '<td></td>'}
         </tr>`;
     }).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">Failed to load DNS records</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="5" class="table-msg-error">Failed to load DNS records</td></tr>';
   }
 }
 
@@ -910,9 +928,7 @@ async function doDeleteCfRecord(id, name) {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CRAFTY SERVERS
-// ══════════════════════════════════════════════════════════════════════════════
+// Crafty servers
 async function loadCraftyServers() {
   const tbody  = document.getElementById('crafty-tbody');
   const countEl = document.getElementById('crafty-server-count');
@@ -925,19 +941,21 @@ async function loadCraftyServers() {
     const d = await r.json();
 
     if (!d.success) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--danger)">${esc(d.error || 'Failed to load')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="table-msg-error">${esc(d.error || 'Failed to load')}</td></tr>`;
       return;
     }
 
-    if (d.warning && !d.servers.length) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">Crafty not configured — <a href="#" onclick="switchTab('settings');return false;" style="color:var(--accent)">Go to Settings</a></td></tr>`;
+    if (d.configured === false || !d.servers.length && d.warning) {
+      tbody.innerHTML =
+        '<tr><td colspan="6" class="table-msg">Crafty not configured — ' +
+        '<a href="#" data-action="switch-tab" data-tab="settings" class="u-accent">Go to Settings</a></td></tr>';
       return;
     }
 
     const canManage = IS_ADMIN || USER_PERMS.has('manage_servers');
 
     if (!d.servers.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No servers found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="table-msg">No servers found</td></tr>';
       if (countEl) countEl.textContent = '';
       return;
     }
@@ -949,8 +967,8 @@ async function loadCraftyServers() {
       const ram = Math.min(Math.round(s.mem_percent || 0), 100);
       const portHealth = s.running
         ? (s.port_reachable
-            ? `<span class="dot dot-green" style="display:inline-block;margin-left:6px;" title="Port reachable"></span>`
-            : `<span class="dot dot-warn" style="display:inline-block;margin-left:6px;" title="${esc(s.port_error || 'Port unreachable')}"></span>`)
+            ? '<span class="dot dot-green u-inline-dot" title="Port reachable"></span>'
+            : `<span class="dot dot-warn u-inline-dot" title="${esc(s.port_error || 'Port unreachable')}"></span>`)
         : '';
 
       return `
@@ -968,15 +986,15 @@ async function loadCraftyServers() {
             <span class="player-count">${s.running ? s.online_players : '—'}<span class="max">/${s.max_players}</span></span>
           </td>
           <td>
-            <div style="display:flex;flex-direction:column;gap:5px;min-width:100px;">
+            <div class="progress-stack">
               <div class="progress-bar-wrap">
-                <span style="font-size:10px;width:28px;">CPU</span>
-                <div class="progress-bar"><div class="progress-fill cpu" style="width:${cpu}%"></div></div>
+                <span class="progress-label">CPU</span>
+                <div class="progress-bar"><div class="progress-fill cpu" data-bar-width="${cpu}"></div></div>
                 <span>${cpu}%</span>
               </div>
               <div class="progress-bar-wrap">
-                <span style="font-size:10px;width:28px;">RAM</span>
-                <div class="progress-bar"><div class="progress-fill ram" style="width:${ram}%"></div></div>
+                <span class="progress-label">RAM</span>
+                <div class="progress-bar"><div class="progress-fill ram" data-bar-width="${ram}"></div></div>
                 <span>${ram}%</span>
               </div>
             </div>
@@ -985,31 +1003,38 @@ async function loadCraftyServers() {
             <span class="mono">${esc(String(s.port))}${portHealth}</span>
           </td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-ghost btn-sm" data-crafty-port-id="${esc(s.id)}" data-crafty-port-name="${esc(s.name)}" data-crafty-port="${Number(s.port) || 0}" title="Change port">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <button type="button" class="btn btn-ghost btn-sm" data-crafty-port-id="${esc(s.id)}" data-crafty-port-name="${esc(s.name)}" data-crafty-port="${Number(s.port) || 0}" title="Change port">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Port
             </button>
-            <button class="btn btn-sm ${s.running ? 'btn-ghost' : 'btn-green'}" data-crafty-action-id="${esc(s.id)}" data-crafty-action="${s.running ? 'restart' : 'start'}">
+            <button type="button" class="btn btn-sm ${s.running ? 'btn-ghost' : 'btn-green'}" data-crafty-action-id="${esc(s.id)}" data-crafty-action="${s.running ? 'restart' : 'start'}">
               ${s.running
                 ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg> Restart'
                 : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start'}
             </button>
-            ${s.running ? `<button class="btn btn-danger btn-sm" data-crafty-action-id="${esc(s.id)}" data-crafty-action="stop">
+            ${s.running ? `<button type="button" class="btn btn-danger btn-sm" data-crafty-action-id="${esc(s.id)}" data-crafty-action="stop">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
               Stop
             </button>` : ''}
           </td>` : '<td></td>'}
         </tr>`;
     }).join('');
+    applyBarWidths(tbody);
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--danger)">Failed to load servers</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="table-msg-error">Failed to load servers</td></tr>';
   }
+}
+
+function applyBarWidths(root) {
+  root.querySelectorAll('[data-bar-width]').forEach(el => {
+    el.style.width = `${Number(el.dataset.barWidth) || 0}%`;
+  });
 }
 
 async function craftyAction(serverId, action, btn) {
   const origHTML = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span>';
+  btn.innerHTML = '<span class="spinner spinner-sm"></span>';
   try {
     const fd = new FormData();
     fd.append('action', action);
@@ -1018,16 +1043,15 @@ async function craftyAction(serverId, action, btn) {
     if (d.success) {
       showToast(d.message || `Server ${action} sent`, 'success');
       setTimeout(() => loadCraftyServers(), 2000);
-    } else {
-      showToast(d.error || 'Action failed', 'error');
-      btn.disabled = false;
-      btn.innerHTML = origHTML;
+      return;
     }
+    showToast(d.error || 'Action failed', 'error');
   } catch {
     showToast('Network error', 'error');
-    btn.disabled = false;
-    btn.innerHTML = origHTML;
   }
+  // Re-enabled on every failure path so the button cannot stay stuck.
+  btn.disabled = false;
+  btn.innerHTML = origHTML;
 }
 
 function openCraftyPortModal(serverId, serverName, currentPort) {
@@ -1059,7 +1083,7 @@ function renderSteps(restart) {
     { id: 'start', label: 'Start server', visible: restart },
   ];
   container.innerHTML = steps.map(s => `
-    <div class="step" id="step-${s.id}" style="${s.visible === false ? 'display:none' : ''}">
+    <div class="step${s.visible === false ? ' u-hidden' : ''}" id="step-${s.id}">
       <div class="step-icon" id="step-icon-${s.id}">
         <span class="spinner"></span>
       </div>
@@ -1166,7 +1190,12 @@ async function submitCraftyPort() {
     const d = await r.json();
     if (d.success) {
       await animateSteps(d);
-      setTimeout(() => loadCraftyServers(), 1500);
+      setTimeout(() => {
+        loadCraftyServers();
+        // The port change rewrites route backends, so the routes table is
+        // stale until it reloads.
+        refreshRoutesTable();
+      }, 1500);
     } else {
       setStepError('file', d.file_updated === false ? 'File not found — check volume mount' : '');
       setStepError('api', d.api_updated === false ? 'Crafty API rejected the change' : '');
@@ -1189,9 +1218,7 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// USER MANAGEMENT
-// ══════════════════════════════════════════════════════════════════════════════
+// User management
 let _usersLoaded = false;
 
 async function loadUsersList(force) {
@@ -1208,45 +1235,49 @@ async function loadUsersList(force) {
       return;
     }
     if (!r.ok) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">Unable to load users. Check your permissions and retry.</td></tr>';
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="table-msg-error">Unable to load users. ' +
+        'Check your permissions and retry.</td></tr>';
       return;
     }
     const users = await r.json();
     const canManage = IS_ADMIN || USER_PERMS.has('manage_users');
 
     if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--muted)">No users found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="table-msg">No users found</td></tr>';
       return;
     }
 
     tbody.innerHTML = users.map(u => {
       const isMe = u.id === USER_ID;
-      const initials = u.username.slice(0, 2).toUpperCase();
+      // Escaped like every other interpolated value; a username may contain
+      // characters that would otherwise break the surrounding markup.
+      const initials = esc(u.username.slice(0, 2).toUpperCase());
       const createdDate = u.created_at ? u.created_at.split('T')[0] : '—';
       return `
         <tr>
           <td>
-            <div style="display:flex;align-items:center;gap:9px;">
-              <div class="user-avatar" style="width:30px;height:30px;font-size:12px;">${initials}</div>
-              <span class="text-white">${esc(u.username)}${isMe ? ' <span class="text-muted" style="font-size:11px;font-weight:400;">(you)</span>' : ''}</span>
+            <div class="u-row-9">
+              <div class="user-avatar">${initials}</div>
+              <span class="text-white">${esc(u.username)}${isMe ? ' <span class="text-muted u-fs-11-normal">(you)</span>' : ''}</span>
             </div>
           </td>
           <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
           <td>
             ${u.role !== 'admin' && canManage
-              ? `<button class="btn btn-ghost btn-sm" data-perm-user-id="${u.id}" data-perm-username="${esc(u.username)}">
+              ? `<button type="button" class="btn btn-ghost btn-sm" data-perm-user-id="${u.id}" data-perm-username="${esc(u.username)}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Permissions
                 </button>`
-              : '<span class="text-muted" style="font-size:12px;">Full access</span>'}
+              : '<span class="text-muted u-fs-12">Full access</span>'}
           </td>
-          <td class="text-muted" style="font-size:12px;">${createdDate}</td>
+          <td class="text-muted u-fs-12">${createdDate}</td>
           ${canManage ? `<td class="actions-cell">
-            <button class="btn btn-ghost btn-sm" data-edit-user-id="${u.id}" data-edit-user-name="${esc(u.username)}" data-edit-user-role="${esc(u.role)}">
+            <button type="button" class="btn btn-ghost btn-sm" data-edit-user-id="${u.id}" data-edit-user-name="${esc(u.username)}" data-edit-user-role="${esc(u.role)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
               Edit
             </button>
-            ${!isMe ? `<button class="btn btn-danger btn-sm" data-delete-user-id="${u.id}" data-delete-user-name="${esc(u.username)}">
+            ${!isMe ? `<button type="button" class="btn btn-danger btn-sm" data-delete-user-id="${u.id}" data-delete-user-name="${esc(u.username)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
               Delete
             </button>` : ''}
@@ -1255,7 +1286,7 @@ async function loadUsersList(force) {
     }).join('');
     _usersLoaded = true;
   } catch {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--danger)">Failed to load users</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="table-msg-error">Failed to load users</td></tr>';
   }
 }
 
@@ -1266,7 +1297,7 @@ function openAddUserModal() {
   document.getElementById('u-role').value = 'user';
   document.getElementById('u-password-label').textContent = 'Password';
   document.getElementById('u-password').required = true;
-  document.getElementById('u-password-hint').textContent = 'Choose a secure password (min. 6 characters).';
+  document.getElementById('u-password-hint').textContent = 'Choose a secure password (min. 12 characters).';
   document.getElementById('user-modal-submit').textContent = 'Create User';
   window._editUserId = null;
   openModal('user-modal');
@@ -1293,11 +1324,11 @@ async function submitUserForm() {
 
   if (!username) { showToast('Username is required', 'error'); return; }
   if (!id && !password) { showToast('Password is required', 'error'); return; }
-  if (password && password.length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+  if (password && password.length < 12) { showToast('Password must be at least 12 characters', 'error'); return; }
 
   const btn = document.getElementById('user-modal-submit');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
 
   try {
     const url = id ? `/users/edit/${id}` : '/users/add';
@@ -1334,7 +1365,7 @@ async function submitDeleteUser() {
   if (!id) return;
   const btn = document.getElementById('delete-user-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Deleting…';
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Deleting…';
   try {
     const r = await apiFetch(`/users/delete/${id}`, { method: 'POST' });
     const d = await r.json();
@@ -1354,12 +1385,12 @@ async function submitDeleteUser() {
   }
 }
 
-// ── Permission editor ─────────────────────────────────────────────────────────
+// Permission editor
 async function openPermModal(userId, username) {
   document.getElementById('perm-modal-username').textContent = `Editing permissions for: ${username}`;
   document.getElementById('perm-user-id').value = userId;
   const grid = document.getElementById('perm-grid');
-  grid.innerHTML = '<div style="color:var(--muted);font-size:13px;">Loading…</div>';
+  grid.innerHTML = '<div class="u-note">Loading…</div>';
   openModal('perm-modal');
 
   try {
@@ -1370,18 +1401,22 @@ async function openPermModal(userId, username) {
     grid.innerHTML = ALL_PERMS.map(perm => {
       const active = userPerms.has(perm);
       return `
-        <div class="perm-item ${active ? 'active' : ''}" data-perm="${perm}" onclick="togglePerm(this)">
-          <div class="perm-check"></div>
-          <span>${PERM_LABELS[perm] || perm}</span>
+        <div class="perm-item ${active ? 'active' : ''}" data-perm="${esc(perm)}"
+             role="checkbox" aria-checked="${active}" tabindex="0" data-action="toggle-perm">
+          <div class="perm-check" aria-hidden="true"></div>
+          <span>${esc(PERM_LABELS[perm] || perm)}</span>
         </div>`;
     }).join('');
   } catch {
-    grid.innerHTML = '<div style="color:var(--danger);font-size:13px;">Failed to load permissions</div>';
+    grid.innerHTML = '<div class="u-note-danger">Failed to load permissions</div>';
   }
 }
 
+// Toggling is exposed as role=checkbox with keyboard support so the permission
+// editor is usable without a mouse.
 function togglePerm(el) {
   el.classList.toggle('active');
+  el.setAttribute('aria-checked', el.classList.contains('active') ? 'true' : 'false');
 }
 
 async function savePermissions() {
@@ -1391,7 +1426,7 @@ async function savePermissions() {
 
   const btn = document.querySelector('#perm-modal .modal-footer .btn-primary');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;margin:0;"></span> Saving…';
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
 
   try {
     const r = await apiFetch(`/api/permissions/${userId}`, {
@@ -1405,7 +1440,7 @@ async function savePermissions() {
       showToast('Permissions saved successfully', 'success');
       loadUsersList(true);
     } else {
-      showToast('Failed to save permissions', 'error');
+      showToast(d.error || 'Failed to save permissions', 'error');
     }
   } catch {
     showToast('Network error', 'error');
@@ -1415,9 +1450,7 @@ async function savePermissions() {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// UTILITIES
-// ══════════════════════════════════════════════════════════════════════════════
+// Utilities
 function esc(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -1425,6 +1458,17 @@ function esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// The tab badge reflects the rows actually rendered for this user.
+function updateConnectionTotal() {
+  let total = 0;
+  document.querySelectorAll('.conn-count').forEach(el => {
+    const value = Number(el.textContent);
+    if (Number.isFinite(value)) total += value;
+  });
+  const totalEl = document.getElementById('tab-count-routes');
+  if (totalEl) totalEl.textContent = total;
 }
 
 function relTime(isoString) {
@@ -1437,14 +1481,78 @@ function relTime(isoString) {
   } catch { return ''; }
 }
 
+// Actions referenced from markup via data-action, which replaces inline
+// handlers that a strict Content-Security-Policy blocks.
+const ACTIONS = {
+  'toggle-theme': () => toggleTheme(),
+  'refresh-health': () => refreshHealth(),
+  'open-route-modal': () => openRouteModal(),
+  'close-route-modal': () => closeRouteModal(),
+  'open-cf-create-modal': () => openCfCreateModal(),
+  'create-cf-record': () => createCfRecord(),
+  'load-cf-records': () => loadCfRecords(),
+  'load-crafty-servers': () => loadCraftyServers(),
+  'open-add-user-modal': () => openAddUserModal(),
+  'submit-user-form': () => submitUserForm(),
+  'submit-delete-user': () => submitDeleteUser(),
+  'submit-delete-route': () => submitDeleteRoute(),
+  'save-permissions': () => savePermissions(),
+  'submit-crafty-port': () => submitCraftyPort(),
+  'validate': () => triggerValidation(),
+  'default-toggle': () => onDefaultToggle(),
+  'crafty-backend-select': () => onCraftyBackendSelect(),
+  'close-modal': el => closeModal(el.dataset.modal),
+  'switch-tab': el => switchTab(el.dataset.tab || el.value),
+  'toggle-perm': el => togglePerm(el),
+  'dismiss-flash': el => el.closest('.flash')?.remove(),
+  'copy': el => copyToClipboard(el.dataset.copy, el),
+  'open-edit-route-modal': el => openEditRouteModal(
+    Number(el.dataset.routeId),
+    el.dataset.hostname,
+    el.dataset.backend,
+    el.dataset.isDefault === '1',
+  ),
+  'confirm-delete-route': el => confirmDeleteRoute(
+    Number(el.dataset.routeId),
+    el.dataset.hostname,
+  ),
+};
+
+function runAction(event) {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+
+  // A select fires both input and change; handle it once, on change.
+  if (event.type === 'input' && el.tagName === 'SELECT') return;
+
+  const handler = ACTIONS[el.dataset.action];
+  if (!handler) return;
+
+  // Buttons and links would otherwise submit a form or navigate.
+  if (event.type === 'submit' || el.tagName === 'A') event.preventDefault();
+  handler(el, event);
+}
+
+function bindActionDispatcher() {
+  ['click', 'change', 'input', 'submit'].forEach(type => {
+    document.addEventListener(type, runAction);
+  });
+  // role=checkbox elements need explicit keyboard activation.
+  document.addEventListener('keydown', event => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    const el = event.target.closest('[role="checkbox"][data-action]');
+    if (!el) return;
+    event.preventDefault();
+    runAction({ target: el, type: 'click' });
+  });
+}
+
 function bindDynamicActions() {
   document.addEventListener('click', event => {
-    const target = event.target.closest('[data-copy], [data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id], [data-edit-route-id], [data-delete-route-id]');
+    const target = event.target.closest('[data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id], [data-edit-route-id], [data-delete-route-id]');
     if (!target) return;
 
-    if (target.dataset.copy !== undefined) {
-      copyToClipboard(target.dataset.copy, target);
-    } else if (target.dataset.cfId) {
+    if (target.dataset.cfId) {
       deleteCfRecord(target.dataset.cfId, target.dataset.cfName);
     } else if (target.dataset.craftyPortId) {
       openCraftyPortModal(
@@ -1489,10 +1597,9 @@ function bindDynamicActions() {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════════════════════════════════════
+// Init
 document.addEventListener('DOMContentLoaded', () => {
+  bindActionDispatcher();
   bindDynamicActions();
   document.querySelectorAll('[role="tab"]').forEach(tab => {
     tab.addEventListener('keydown', event => {
@@ -1530,10 +1637,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 5000);
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SSE — real-time event stream, replaces polling
-  // ═══════════════════════════════════════════════════════════════════════════
-  function sseStatus(online) {
+  // SSE: real-time event stream, replacing REST polling.
+  function sseStatus(online, message) {
     let banner = document.getElementById('sse-banner');
     if (online) {
       if (banner) banner.remove();
@@ -1543,9 +1648,10 @@ document.addEventListener('DOMContentLoaded', () => {
       banner = document.createElement('div');
       banner.id = 'sse-banner';
       banner.className = 'sse-banner';
-      banner.textContent = 'Reconnecting to live updates…';
+      banner.setAttribute('role', 'status');
       document.body.appendChild(banner);
     }
+    banner.textContent = message || 'Live updates unavailable';
   }
 
   function connectSSE() {
@@ -1560,17 +1666,24 @@ document.addEventListener('DOMContentLoaded', () => {
     evtSource.addEventListener('connections', (e) => {
       try {
         const data = JSON.parse(e.data);
-        let total = 0;
         Object.entries(data).forEach(([hostname, count]) => {
           const rows = document.querySelectorAll(`[data-hostname="${CSS.escape(hostname)}"]`);
           rows.forEach(row => {
             const connEl = row.querySelector('.conn-count');
             if (connEl) connEl.textContent = count;
           });
-          total += count;
         });
-        const totalEl = document.getElementById('tab-count-routes');
-        if (totalEl) totalEl.textContent = total;
+        // Summed from the rendered rows rather than the payload: restricted
+        // users receive only the hostnames they may see, so totalling the
+        // payload would disagree with the table.
+        updateConnectionTotal();
+      } catch {}
+    });
+
+    evtSource.addEventListener('router-status', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        sseStatus(data.online !== false, data.online === false ? 'mc-router unreachable' : null);
       } catch {}
     });
 
@@ -1583,12 +1696,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     evtSource.onerror = () => {
-      // A session expiry must not leave EventSource reconnecting forever.
-      if (evtSource.readyState === EventSource.CLOSED) {
-        window.location.href = '/login';
-      } else {
-        sseStatus(false);
-      }
+      // EventSource also reports CLOSED for a transient non-200 during a
+      // restart, so reconnecting is left to the browser instead of forcing a
+      // navigation that would discard unsaved form input.
+      sseStatus(false, 'Reconnecting to live updates…');
     };
   }
 

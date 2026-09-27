@@ -4,19 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MC Router UI – Dashboard</title>
+<meta name="color-scheme" content="dark light">
 <meta name="description" content="Minecraft Server Routing UI with Cloudflare DDNS and Crafty Controller integration">
-<link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="/static/css/main.css?v=7">
+<link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg?v=1">
+<link rel="stylesheet" href="/static/css/main.css?v=8">
 
-<!-- Theme: apply before paint to avoid flash -->
-<script>
+<!-- Applies the stored theme before first paint to avoid a flash. -->
+<script nonce="{{ csp_nonce }}">
 (function(){var t=localStorage.getItem('mc-theme')||'dark';document.documentElement.dataset.theme=t;})();
 </script>
 
-<!-- Inject config for dashboard.js -->
-<script>
+<!-- Server-provided config consumed by dashboard.js. -->
+<script nonce="{{ csp_nonce }}">
 window.MC_UI_CONFIG = {
   isAdmin:  {{ 'true' if current_user.role == 'admin' else 'false' }},
   userId:   {{ current_user.id | tojson }},
@@ -29,26 +28,24 @@ window.MC_UI_CONFIG = {
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
-     HEADER
-     ══════════════════════════════════════════════════════════════════════════ -->
+<!-- Header -->
 <header>
   <div class="header-left">
     <a href="/" class="brand">MC Router UI</a>
   </div>
 
   <div class="header-center">
-    <div class="tabs-bar" id="main-tabs-bar" role="tablist">
-      <button class="tab-btn active" id="tab-btn-routes" role="tab" aria-selected="true" aria-controls="tab-routes" tabindex="0" onclick="switchTab('routes')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <div class="tabs-bar" id="main-tabs-bar" role="tablist" aria-label="Sections">
+      <button class="tab-btn active" id="tab-btn-routes" role="tab" aria-selected="true" aria-controls="tab-routes" tabindex="0" data-action="switch-tab" data-tab="routes" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 11l19-9-9 19-2-8-8-2z"/>
         </svg>
         Router
         <span class="tab-count" id="tab-count-routes">{{ total_connections }}</span>
       </button>
 
-      <button class="tab-btn" id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="-1" onclick="switchTab('settings')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button class="tab-btn" id="tab-btn-settings" role="tab" aria-selected="false" aria-controls="tab-settings" tabindex="-1" data-action="switch-tab" data-tab="settings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
         Settings
@@ -57,11 +54,11 @@ window.MC_UI_CONFIG = {
   </div>
 
   <div class="header-right">
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
-      <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <button class="theme-toggle" data-action="toggle-theme" title="Toggle theme" aria-label="Toggle theme" type="button">
+      <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       </svg>
-      <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
       </svg>
     </button>
@@ -73,7 +70,7 @@ window.MC_UI_CONFIG = {
 
     <form method="post" action="/logout">
       <button type="submit" class="btn-logout" title="Sign out">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
       </button>
@@ -81,40 +78,43 @@ window.MC_UI_CONFIG = {
   </div>
 </header>
 
-<!-- ══════════════════════════════════════════════════════════════════════════
-     MAIN CONTENT
-     ══════════════════════════════════════════════════════════════════════════ -->
+<!-- Main content -->
 <main>
 
   <!-- Mobile tab selector -->
-  <select class="mobile-tab-select" id="mobile-tab-select" onchange="switchTab(this.value)">
+  <select class="mobile-tab-select" id="mobile-tab-select" data-action="switch-tab" aria-label="Section">
     <option value="routes">Router</option>
     <option value="settings">Settings</option>
   </select>
 
+  {% if default_password_warning %}
+  <div class="alert alert-warning" role="alert">
+    <strong>Default admin password in use.</strong>
+    Set <code>ADMIN_PASSWORD</code> and change it under Settings before exposing this instance.
+  </div>
+  {% endif %}
+
   {% include "partials/flash_messages.html" %}
 
-  <!-- ════════════════════════════════════════════════════════════════════════
-       TAB 1: ROUTES
-       ════════════════════════════════════════════════════════════════════════ -->
+  <!-- Tab 1: Routes -->
   <div class="tab-content active" id="tab-routes" role="tabpanel" aria-labelledby="tab-btn-routes">
     <div class="section-header">
       <div class="section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 11l19-9-9 19-2-8-8-2z"/>
         </svg>
         <h2>Routes <span class="count">{{ routes|length }} total</span></h2>
       </div>
       <div class="section-actions">
-        <button class="btn btn-ghost btn-sm" onclick="refreshHealth()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="btn btn-ghost btn-sm" data-action="refresh-health" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
           </svg>
           Refresh
         </button>
         {% if 'create_route' in user_perms or current_user.role == 'admin' %}
-        <button class="btn btn-primary" onclick="openRouteModal()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <button class="btn btn-primary" data-action="open-route-modal" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Add Route
@@ -128,20 +128,20 @@ window.MC_UI_CONFIG = {
       <table class="data-table" aria-label="Route list">
         <thead>
           <tr>
-            <th>Hostname</th>
-            <th>Source</th>
-            <th>Backend</th>
-            <th>Status</th>
-            <th>Connections</th>
-            <th>Owner</th>
-            <th style="text-align:right;">Actions</th>
+            <th scope="col">Hostname</th>
+            <th scope="col">Source</th>
+            <th scope="col">Backend</th>
+            <th scope="col">Status</th>
+            <th scope="col">Connections</th>
+            <th scope="col">Owner</th>
+            <th class="u-text-right" scope="col">Actions</th>
           </tr>
         </thead>
         <tbody id="routes-body">
           {% for r in routes %}
           <tr id="row-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}" data-hostname="{{ r.hostname }}" data-source="{{ r.source }}" data-backend="{{ r.backend }}">
             <td>
-              <div style="display:flex;align-items:center;gap:8px;">
+              <div class="u-row">
                 <span class="mono text-white">{{ r.hostname if r.hostname != '__default__' else '*' }}</span>
                 {% if r.is_default %}<span class="badge badge-default">Default</span>{% endif %}
               </div>
@@ -149,7 +149,7 @@ window.MC_UI_CONFIG = {
             <td>
               {% if r.source == 'docker' %}
               <span class="badge badge-docker">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><circle cx="12" cy="12" r="10"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true"><circle cx="12" cy="12" r="10"/></svg>
                 Docker
               </span>
               {% else %}
@@ -157,10 +157,10 @@ window.MC_UI_CONFIG = {
               {% endif %}
             </td>
             <td>
-              <div style="display:flex;align-items:center;gap:6px;">
+              <div class="u-row-tight">
                 <span class="backend-pill">{{ r.backend }}</span>
-                <button class="copy-btn" onclick='copyToClipboard({{ r.backend|tojson }},this)' title="Copy backend address">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button class="copy-btn" data-action="copy" data-copy="{{ r.backend }}" title="Copy backend address" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                   </svg>
                 </button>
@@ -173,28 +173,28 @@ window.MC_UI_CONFIG = {
               </div>
             </td>
             <td>
-              <span class="text-white conn-count" id="conn-{{ r.id }}">{{ r.active_connections }}</span>
+              <span class="text-white conn-count" id="conn-{{ r.id if r.id is not none else 'docker-' ~ loop.index }}">{{ r.active_connections }}</span>
             </td>
             <td>
               <span class="badge badge-owner">{{ r.owner_name }}</span>
             </td>
             <td class="actions-cell">
               {% if r.source == 'docker' %}
-              <span class="text-muted" style="font-size:11px;">Managed by Docker</span>
+              <span class="text-muted u-fs-11">Managed by Docker</span>
               {% else %}
               {% set can_edit   = current_user.role == 'admin' or (r.owner_id == current_user.id and 'edit_own_route' in user_perms) %}
               {% set can_delete = current_user.role == 'admin' or (r.owner_id == current_user.id and 'delete_own_route' in user_perms) %}
               {% if can_edit %}
-              <button class="btn btn-ghost btn-sm" onclick='openEditRouteModal({{ r.id }}, {{ r.hostname|tojson }}, {{ r.backend|tojson }}, {{ (r.is_default == 1)|tojson }})'>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="btn btn-ghost btn-sm" data-action="open-edit-route-modal" data-route-id="{{ r.id }}" data-hostname="{{ r.hostname }}" data-backend="{{ r.backend }}" data-is-default="{{ 1 if r.is_default == 1 else 0 }}" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                 </svg>
                 Edit
               </button>
               {% endif %}
               {% if can_delete %}
-              <button class="btn btn-danger btn-sm" onclick='confirmDeleteRoute({{ r.id }}, {{ r.hostname|tojson }})'>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="btn btn-danger btn-sm" data-action="confirm-delete-route" data-route-id="{{ r.id }}" data-hostname="{{ r.hostname }}" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>
                 </svg>
                 Delete
@@ -209,15 +209,15 @@ window.MC_UI_CONFIG = {
       {% else %}
       <div class="empty-state" id="routes-empty">
         <div class="empty-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M3 11l19-9-9 19-2-8-8-2z"/>
           </svg>
         </div>
         <h3>No routes configured</h3>
         <p>Add your first route to start routing Minecraft traffic to your servers.</p>
         {% if 'create_route' in user_perms or current_user.role == 'admin' %}
-        <button class="btn btn-primary" onclick="openRouteModal()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <button class="btn btn-primary" data-action="open-route-modal" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Add First Route
@@ -227,26 +227,24 @@ window.MC_UI_CONFIG = {
       {% endif %}
     </div>
 
-  <!-- ════════════════════════════════════════════════════════════════════════
-       CLOUDFLARE DNS SUB-PANEL (inside Router tab)
-       ════════════════════════════════════════════════════════════════════════ -->
+  <!-- Cloudflare DNS sub-panel -->
   {% if 'see_cloudflare' in user_perms or current_user.role == 'admin' %}
-  <div id="cf-subpanel" style="margin-top:32px;">
-    <div class="section-header" style="margin-bottom:16px;">
+  <div id="cf-subpanel" class="u-mt-32">
+    <div class="section-header u-mb-16">
       <div class="section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="18" height="18">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="18" height="18" aria-hidden="true">
           <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
         </svg>
-        <h2 style="font-size:15px;">Cloudflare DNS <span class="count" id="cf-record-count"></span></h2>
+        <h2 class="u-fs-15">Cloudflare DNS <span class="count" id="cf-record-count"></span></h2>
       </div>
       <div class="section-actions">
-        <button class="btn btn-ghost btn-sm" onclick="loadCfRecords()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+        <button class="btn btn-ghost btn-sm" data-action="load-cf-records" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
           Refresh
         </button>
         {% if 'manage_cloudflare' in user_perms or current_user.role == 'admin' %}
-        <button class="btn btn-blue" onclick="openCfCreateModal()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <button class="btn btn-blue" data-action="open-cf-create-modal" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Create A-Record
         </button>
         {% endif %}
@@ -255,11 +253,11 @@ window.MC_UI_CONFIG = {
     <div class="card">
       {% if not cf_enabled %}
       <div class="empty-state">
-        <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div>
+        <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></div>
         <h3>Cloudflare not configured</h3>
         <p>Enter your Cloudflare API token and zone in <strong>Settings → Cloudflare</strong>.</p>
-        <button class="btn btn-primary" onclick="switchTab('settings')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <button class="btn btn-primary" data-action="switch-tab" data-tab="settings" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           Configure Cloudflare
         </button>
       </div>
@@ -267,17 +265,17 @@ window.MC_UI_CONFIG = {
       <table class="data-table" id="cf-table" aria-label="Cloudflare DNS records">
         <thead>
           <tr>
-            <th>Hostname</th>
-            <th>IP Address</th>
-            <th>TTL</th>
-            <th>Last Modified</th>
+            <th scope="col">Hostname</th>
+            <th scope="col">IP Address</th>
+            <th scope="col">TTL</th>
+            <th scope="col">Last Modified</th>
             {% if 'manage_cloudflare' in user_perms or current_user.role == 'admin' %}
-            <th style="text-align:right;">Actions</th>
+            <th class="u-text-right" scope="col">Actions</th>
             {% endif %}
           </tr>
         </thead>
         <tbody id="cf-tbody">
-          <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w160" style="margin:0 auto;"></div></td></tr>
+          <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w160 u-mx-auto"></div></td></tr>
         </tbody>
       </table>
       {% endif %}
@@ -285,21 +283,19 @@ window.MC_UI_CONFIG = {
   </div>
   {% endif %}
 
-  <!-- ════════════════════════════════════════════════════════════════════════
-       CRAFTY SERVERS SUB-PANEL (inside Router tab)
-       ════════════════════════════════════════════════════════════════════════ -->
+  <!-- Crafty servers sub-panel -->
   {% if 'see_servers' in user_perms or current_user.role == 'admin' %}
-  <div id="crafty-subpanel" style="margin-top:32px;">
-    <div class="section-header" style="margin-bottom:16px;">
+  <div id="crafty-subpanel" class="u-mt-32">
+    <div class="section-header u-mb-16">
       <div class="section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="18" height="18">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="18" height="18" aria-hidden="true">
           <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
         </svg>
-        <h2 style="font-size:15px;">Crafty Controller <span class="count" id="crafty-server-count"></span></h2>
+        <h2 class="u-fs-15">Crafty Controller <span class="count" id="crafty-server-count"></span></h2>
       </div>
       <div class="section-actions">
-        <button class="btn btn-ghost btn-sm" onclick="loadCraftyServers()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+        <button class="btn btn-ghost btn-sm" data-action="load-crafty-servers" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
           Refresh
         </button>
       </div>
@@ -308,18 +304,18 @@ window.MC_UI_CONFIG = {
       <table class="data-table" aria-label="Crafty servers">
         <thead>
           <tr>
-            <th>Server</th>
-            <th>Status</th>
-            <th>Players</th>
-            <th>Load</th>
-            <th>Port</th>
+            <th scope="col">Server</th>
+            <th scope="col">Status</th>
+            <th scope="col">Players</th>
+            <th scope="col">Load</th>
+            <th scope="col">Port</th>
             {% if 'manage_servers' in user_perms or current_user.role == 'admin' %}
-            <th style="text-align:right;">Actions</th>
+            <th class="u-text-right" scope="col">Actions</th>
             {% endif %}
           </tr>
         </thead>
         <tbody id="crafty-tbody">
-          <tr class="skeleton-row"><td colspan="6"><div class="skeleton-cell w120" style="margin:0 auto;"></div></td></tr>
+          <tr class="skeleton-row"><td colspan="6"><div class="skeleton-cell w120 u-mx-auto"></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -328,13 +324,11 @@ window.MC_UI_CONFIG = {
 
   </div><!-- close tab-routes -->
 
-  <!-- ════════════════════════════════════════════════════════════════════════
-       TAB 2: SETTINGS
-       ════════════════════════════════════════════════════════════════════════ -->
+  <!-- Tab 2: Settings -->
   <div class="tab-content" id="tab-settings" role="tabpanel" aria-labelledby="tab-btn-settings">
     <div class="section-header">
       <div class="section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="20" height="20" aria-hidden="true">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
         <h2>Settings</h2>
@@ -342,28 +336,28 @@ window.MC_UI_CONFIG = {
     </div>
 
     <!-- Account settings (all users) -->
-    <div class="settings-grid" style="margin-bottom:26px;">
+    <div class="settings-grid u-mb-26">
       <div class="settings-card">
         <div class="settings-card-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
           </svg>
           <h3>Change Password</h3>
         </div>
-        <form method="post" action="/settings/password" style="display:flex;flex-direction:column;gap:14px;">
-          <div class="form-group" style="margin:0;">
-            <label>Current Password</label>
-            <input type="password" name="current_password" required>
+        <form method="post" action="/settings/password" class="u-col">
+          <div class="form-group u-m-0">
+            <label for="pw-current">Current Password</label>
+            <input type="password" id="pw-current" name="current_password" autocomplete="current-password" required>
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>New Password</label>
-            <input type="password" name="new_password" required minlength="6">
+          <div class="form-group u-m-0">
+            <label for="pw-new">New Password</label>
+            <input type="password" id="pw-new" name="new_password" autocomplete="new-password" required minlength="12">
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>Confirm New Password</label>
-            <input type="password" name="confirm_password" required minlength="6">
+          <div class="form-group u-m-0">
+            <label for="pw-confirm">Confirm New Password</label>
+            <input type="password" id="pw-confirm" name="confirm_password" autocomplete="new-password" required minlength="12">
           </div>
-          <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start;">
+          <button type="submit" class="btn btn-primary btn-sm u-self-start">
             Update Password
           </button>
         </form>
@@ -371,7 +365,7 @@ window.MC_UI_CONFIG = {
 
       <div class="settings-card">
         <div class="settings-card-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
           </svg>
           <h3>System Information</h3>
@@ -387,9 +381,9 @@ window.MC_UI_CONFIG = {
         <div class="info-row">
           <span class="label">Cloudflare DDNS</span>
           <span class="val-code">{% if cf_enabled %}
-            <span style="color:var(--green);">✓ Active</span>
+            <span class="u-green">✓ Active</span>
           {% else %}
-            <span style="color:var(--muted);">✗ Disabled</span>
+            <span class="u-muted">✗ Disabled</span>
           {% endif %}</span>
         </div>
         <div class="info-row">
@@ -403,27 +397,27 @@ window.MC_UI_CONFIG = {
     <hr class="section-divider">
 
     <!-- Cloudflare API settings -->
-    <div style="margin-bottom:26px;">
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16">
+    <div class="u-mb-26">
+      <h3 class="u-card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16" aria-hidden="true">
           <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
         </svg>
         Cloudflare Configuration
-        {% if cf_enabled %}<span style="font-size:11px;font-weight:500;color:var(--green);margin-left:4px;">✓ Active</span>{% endif %}
+        {% if cf_enabled %}<span class="u-hint-green">✓ Active</span>{% endif %}
       </h3>
       <div class="settings-card">
         <form method="post" action="/settings/cloudflare" class="form-row">
-          <div class="form-group" style="margin:0;">
-            <label>API Token</label>
-            <input type="password" name="cf_token" value="" placeholder="{{ '•••• already configured — leave blank to keep' if cf_config.token else 'Cloudflare API Token' }}" autocomplete="new-password">
+          <div class="form-group u-m-0">
+            <label for="cf-token">API Token</label>
+            <input type="password" id="cf-token" name="cf_token" value="" placeholder="{{ '•••• already configured — leave blank to keep' if cf_config.token else 'Cloudflare API Token' }}" autocomplete="new-password">
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>Zone ID <span style="color:var(--muted);font-weight:400;">(32-char hex)</span></label>
-            <input type="text" name="cf_zone_id" value="{{ cf_config.zone_id }}" placeholder="e.g. a1b2c3d4..." maxlength="32">
+          <div class="form-group u-m-0">
+            <label for="cf-zone-id">Zone ID <span class="u-muted-normal">(32-char hex)</span></label>
+            <input type="text" id="cf-zone-id" name="cf_zone_id" value="{{ cf_config.zone_id }}" placeholder="e.g. a1b2c3d4..." maxlength="32">
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>Zone Domain <span style="color:var(--muted);font-weight:400;">(if no Zone ID)</span></label>
-            <input type="text" name="cf_zone_name" value="{{ cf_config.zone_name }}" placeholder="example.com">
+          <div class="form-group u-m-0">
+            <label for="cf-zone-name">Zone Domain <span class="u-muted-normal">(if no Zone ID)</span></label>
+            <input type="text" id="cf-zone-name" name="cf_zone_name" value="{{ cf_config.zone_name }}" placeholder="example.com">
           </div>
           <div>
             <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -436,27 +430,27 @@ window.MC_UI_CONFIG = {
 
     {% if 'manage_settings' in user_perms or current_user.role == 'admin' %}
     <!-- Crafty settings -->
-    <div style="margin-bottom:26px;">
-      <h3 style="font-size:15px;font-weight:700;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16">
+    <div class="u-mb-26">
+      <h3 class="u-card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16" aria-hidden="true">
           <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
         </svg>
         Crafty Controller Configuration
-        {% if crafty_config.url %}<span style="font-size:11px;font-weight:500;color:var(--green);margin-left:4px;">✓ Connected</span>{% endif %}
+        {% if crafty_config.url %}<span class="u-hint-green">✓ Connected</span>{% endif %}
       </h3>
       <div class="settings-card">
         <form method="post" action="/settings/crafty" class="form-row">
-          <div class="form-group" style="margin:0;">
-            <label>Crafty API URL</label>
-            <input type="text" name="crafty_url" value="{{ crafty_config.url }}" placeholder="https://crafty:8443">
+          <div class="form-group u-m-0">
+            <label for="crafty-url">Crafty API URL</label>
+            <input type="text" id="crafty-url" name="crafty_url" value="{{ crafty_config.url }}" placeholder="https://crafty:8443">
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>Crafty API Token</label>
-            <input type="password" name="crafty_token" value="" placeholder="{{ '•••• already configured — leave blank to keep' if crafty_config.token else 'JWT token from Crafty' }}" autocomplete="new-password">
+          <div class="form-group u-m-0">
+            <label for="crafty-token">Crafty API Token</label>
+            <input type="password" id="crafty-token" name="crafty_token" value="" placeholder="{{ '•••• already configured — leave blank to keep' if crafty_config.token else 'JWT token from Crafty' }}" autocomplete="new-password">
           </div>
-          <div class="form-group" style="margin:0;">
-            <label>Container Host <span style="color:var(--muted);font-weight:400;">(for TCP health checks)</span></label>
-            <input type="text" name="crafty_container_host" value="{{ crafty_config.container_host }}" placeholder="crafty">
+          <div class="form-group u-m-0">
+            <label for="crafty-container-host">Container Host <span class="u-muted-normal">(for TCP health checks)</span></label>
+            <input type="text" id="crafty-container-host" name="crafty_container_host" value="{{ crafty_config.container_host }}" placeholder="crafty">
           </div>
           <div>
             <button type="submit" class="btn btn-primary btn-sm">Save</button>
@@ -470,17 +464,17 @@ window.MC_UI_CONFIG = {
     {% if 'see_all_users' in user_perms or current_user.role == 'admin' %}
     <!-- User management -->
     <div>
-      <div class="section-header" style="margin-bottom:16px;">
+      <div class="section-header u-mb-16">
         <div class="section-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" width="16" height="16" aria-hidden="true">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          <h3 style="font-size:15px;font-weight:700;color:#fff;">User Management</h3>
+          <h3 class="u-strong-15">User Management</h3>
         </div>
         {% if 'manage_users' in user_perms or current_user.role == 'admin' %}
-        <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <button class="btn btn-primary btn-sm" data-action="open-add-user-modal" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           Add User
@@ -491,17 +485,17 @@ window.MC_UI_CONFIG = {
         <table class="data-table" aria-label="User list">
           <thead>
             <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Permissions</th>
-              <th>Created</th>
+              <th scope="col">Username</th>
+              <th scope="col">Role</th>
+              <th scope="col">Permissions</th>
+              <th scope="col">Created</th>
               {% if 'manage_users' in user_perms or current_user.role == 'admin' %}
-              <th style="text-align:right;">Actions</th>
+              <th class="u-text-right" scope="col">Actions</th>
               {% endif %}
             </tr>
           </thead>
           <tbody id="users-tbody">
-            <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w120" style="margin:0 auto;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="5"><div class="skeleton-cell w120 u-mx-auto"></div></td></tr>
           </tbody>
         </table>
       </div>
@@ -511,22 +505,18 @@ window.MC_UI_CONFIG = {
 
 </main>
 
-<!-- ════════════════════════════════════════════════════════════════════════════
-     TOAST CONTAINER
-     ════════════════════════════════════════════════════════════════════════ -->
+<!-- Toasts -->
 <div id="toast-container" aria-live="polite"></div>
 
-<!-- ════════════════════════════════════════════════════════════════════════════
-     MODALS
-     ════════════════════════════════════════════════════════════════════════ -->
+<!-- Modals -->
 
 <!-- Route Create/Edit Modal (simplified) -->
 <div class="modal-overlay" id="route-modal" role="dialog" aria-modal="true" aria-labelledby="route-modal-title">
   <div class="modal">
     <div class="modal-header">
       <h2 id="route-modal-title">Create Route</h2>
-      <button class="modal-close" onclick="closeRouteModal()" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <button class="modal-close" data-action="close-route-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
@@ -537,19 +527,19 @@ window.MC_UI_CONFIG = {
       <div class="form-group route-modal-field">
         <label for="f-hostname">Hostname</label>
         <div class="hostname-split">
-          <input type="text" id="f-hostname" placeholder="Subdomain" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+          <input type="text" id="f-hostname" placeholder="Subdomain" data-action="validate" autocomplete="off" spellcheck="false">
           <span class="hostname-dot">.</span>
-          <select id="f-domain" onchange="triggerValidation()">
+          <select id="f-domain" data-action="validate" aria-label="Domain">
             <option value="">(enter full domain)</option>
           </select>
         </div>
-        <div id="hostname-preview" class="form-hint resolved-preview" style="display:none;"></div>
+        <div id="hostname-preview" class="form-hint resolved-preview u-hidden"></div>
         <div class="form-hint">The Minecraft client connects to this hostname.</div>
       </div>
 
       <div class="form-group">
         <label class="toggle-row" for="f-is-default">
-          <input type="checkbox" id="f-is-default" onchange="onDefaultToggle()">
+          <input type="checkbox" id="f-is-default" data-action="default-toggle">
           <span class="toggle-slider"></span>
           <span class="toggle-label">Set as default route (fallback for unknown hostnames)</span>
         </label>
@@ -557,10 +547,10 @@ window.MC_UI_CONFIG = {
 
       <div class="form-group route-modal-field" id="f-backend-group">
         <label for="f-backend">Backend Server</label>
-        <select id="f-backend-select" onchange="onCraftyBackendSelect()" style="display:none;">
+        <select id="f-backend-select" data-action="crafty-backend-select" class="u-hidden" aria-label="Crafty server">
           <option value="">Select a Crafty server…</option>
         </select>
-        <input type="text" id="f-backend" placeholder="host:port (e.g. 192.168.1.50:25566)" oninput="triggerValidation()" autocomplete="off" spellcheck="false">
+        <input type="text" id="f-backend" placeholder="host:port (e.g. 192.168.1.50:25566)" data-action="validate" autocomplete="off" spellcheck="false">
         <div class="form-hint">The Minecraft server address that traffic will be forwarded to.</div>
       </div>
 
@@ -568,21 +558,21 @@ window.MC_UI_CONFIG = {
       <div class="validation-container">
         <div class="validation-title">Live Validation</div>
         <div class="validation-item val-neutral" id="val-format">
-          <span class="v-indicator">?</span><span>Hostname format</span>
+          <span class="v-indicator" aria-hidden="true">?</span><span>Hostname format</span><span class="v-message"></span>
         </div>
         <div class="validation-item val-neutral" id="val-cf">
-          <span class="v-indicator">?</span><span>Cloudflare zone</span>
+          <span class="v-indicator" aria-hidden="true">?</span><span>Cloudflare zone</span><span class="v-message"></span>
         </div>
         <div class="validation-item val-neutral" id="val-dns">
-          <span class="v-indicator">?</span><span>DNS record / conflict</span>
+          <span class="v-indicator" aria-hidden="true">?</span><span>DNS record / conflict</span><span class="v-message"></span>
         </div>
         <div class="validation-item val-neutral" id="val-backend">
-          <span class="v-indicator">?</span><span>Backend reachable</span>
+          <span class="v-indicator" aria-hidden="true">?</span><span>Backend reachable</span><span class="v-message"></span>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="closeRouteModal()">Cancel</button>
+        <button type="button" class="btn btn-ghost" data-action="close-route-modal">Cancel</button>
         <button type="submit" class="btn btn-primary" id="route-submit">Create Route</button>
       </div>
     </form>
@@ -590,21 +580,21 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Delete Route Confirm Modal -->
-<div class="modal-overlay" id="delete-route-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="delete-route-modal" role="dialog" aria-modal="true" aria-labelledby="delete-route-title">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2>Delete Route</h2>
-      <button class="modal-close" onclick="closeModal('delete-route-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <h2 id="delete-route-title">Delete Route</h2>
+      <button class="modal-close" data-action="close-modal" data-modal="delete-route-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <p id="delete-route-text" style="font-size:13.5px;color:var(--muted);margin-bottom:24px;line-height:1.6;"></p>
+    <p id="delete-route-text" class="u-lead-muted"></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('delete-route-modal')">Cancel</button>
-      <button type="button" class="btn btn-danger" id="delete-route-btn" onclick="submitDeleteRoute()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+      <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="delete-route-modal">Cancel</button>
+      <button type="button" class="btn btn-danger" id="delete-route-btn" data-action="submit-delete-route">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
         </svg>
         Delete Route
@@ -614,12 +604,12 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Cloudflare Create Record Modal -->
-<div class="modal-overlay" id="cf-create-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="cf-create-modal" role="dialog" aria-modal="true" aria-labelledby="cf-create-title">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2>Create A-Record</h2>
-      <button class="modal-close" onclick="closeModal('cf-create-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <h2 id="cf-create-title">Create A-Record</h2>
+      <button class="modal-close" data-action="close-modal" data-modal="cf-create-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
@@ -628,31 +618,31 @@ window.MC_UI_CONFIG = {
       <label for="cf-new-hostname">Hostname</label>
       <input type="text" id="cf-new-hostname" placeholder="play.yourdomain.com">
     </div>
-    <p class="form-hint" style="margin-bottom:18px;">
+    <p class="form-hint u-mb-18">
       The A-record will point to your server's <strong>auto-detected public IP</strong>.
       Created as DNS-only (grey cloud / unproxied). The DDNS loop keeps it in sync when your IP changes.
     </p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('cf-create-modal')">Cancel</button>
-      <button type="button" class="btn btn-blue" onclick="createCfRecord()">Create Record</button>
+      <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="cf-create-modal">Cancel</button>
+      <button type="button" class="btn btn-blue" data-action="create-cf-record">Create Record</button>
     </div>
   </div>
 </div>
 
 <!-- Generic Confirm Modal (Cloudflare record deletion) -->
-<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
   <div class="modal modal-sm">
     <div class="modal-header">
       <h2 id="confirm-modal-title">Confirm</h2>
-      <button class="modal-close" onclick="closeModal('confirm-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <button class="modal-close" data-action="close-modal" data-modal="confirm-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <p id="confirm-modal-text" style="font-size:13.5px;color:var(--muted);margin-bottom:24px;line-height:1.6;"></p>
+    <p id="confirm-modal-text" class="u-lead-muted"></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('confirm-modal')">Cancel</button>
+      <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="confirm-modal">Cancel</button>
       <button type="button" class="btn btn-danger" id="confirm-modal-ok">Confirm</button>
     </div>
   </div>
@@ -663,8 +653,8 @@ window.MC_UI_CONFIG = {
   <div class="modal modal-sm">
     <div class="modal-header">
       <h2 id="user-modal-title">Add User</h2>
-      <button class="modal-close" onclick="closeModal('user-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <button class="modal-close" data-action="close-modal" data-modal="user-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
@@ -676,8 +666,8 @@ window.MC_UI_CONFIG = {
       </div>
       <div class="form-group">
         <label for="u-password" id="u-password-label">Password</label>
-        <input type="password" id="u-password" name="password" required minlength="6">
-        <div class="form-hint" id="u-password-hint">Choose a secure password (min. 6 characters).</div>
+        <input type="password" id="u-password" name="password" autocomplete="new-password" required minlength="12">
+        <div class="form-hint" id="u-password-hint">Choose a secure password (min. 12 characters).</div>
       </div>
       <div class="form-group">
         <label for="u-role">Role</label>
@@ -687,29 +677,29 @@ window.MC_UI_CONFIG = {
         </select>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-ghost" onclick="closeModal('user-modal')">Cancel</button>
-        <button type="button" class="btn btn-primary" id="user-modal-submit" onclick="submitUserForm()">Create User</button>
+        <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="user-modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="user-modal-submit" data-action="submit-user-form">Create User</button>
       </div>
     </form>
   </div>
 </div>
 
 <!-- Delete User Modal -->
-<div class="modal-overlay" id="delete-user-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="delete-user-modal" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2>Delete User</h2>
-      <button class="modal-close" onclick="closeModal('delete-user-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <h2 id="delete-user-title">Delete User</h2>
+      <button class="modal-close" data-action="close-modal" data-modal="delete-user-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <p id="delete-user-text" style="font-size:13.5px;color:var(--muted);margin-bottom:24px;line-height:1.6;"></p>
+    <p id="delete-user-text" class="u-lead-muted"></p>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('delete-user-modal')">Cancel</button>
-      <button type="button" class="btn btn-danger" id="delete-user-btn" onclick="submitDeleteUser()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+      <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="delete-user-modal">Cancel</button>
+      <button type="button" class="btn btn-danger" id="delete-user-btn" data-action="submit-delete-user">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
         </svg>
         Delete User
@@ -719,38 +709,38 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Permission Editor Modal -->
-<div class="modal-overlay" id="perm-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="perm-modal" role="dialog" aria-modal="true" aria-labelledby="perm-modal-title">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <h2>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" style="display:inline;vertical-align:middle;margin-right:6px;">
+      <h2 id="perm-modal-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" class="u-inline-icon" aria-hidden="true">
           <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
         </svg>
         Edit Permissions
       </h2>
-      <button class="modal-close" onclick="closeModal('perm-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <button class="modal-close" data-action="close-modal" data-modal="perm-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
     </div>
-    <p id="perm-modal-username" style="font-size:13px;color:var(--muted);margin-bottom:18px;"></p>
+    <p id="perm-modal-username" class="u-note-18"></p>
     <input type="hidden" id="perm-user-id">
     <div class="perm-grid" id="perm-grid"><!-- dynamically populated --></div>
     <div class="modal-footer">
-      <button type="button" class="btn btn-ghost" onclick="closeModal('perm-modal')">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="savePermissions()">Save Permissions</button>
+      <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="perm-modal">Cancel</button>
+      <button type="button" class="btn btn-primary" data-action="save-permissions">Save Permissions</button>
     </div>
   </div>
 </div>
 
 <!-- Crafty Port Change Modal -->
-<div class="modal-overlay" id="crafty-port-modal" role="dialog" aria-modal="true">
+<div class="modal-overlay" id="crafty-port-modal" role="dialog" aria-modal="true" aria-labelledby="cp-modal-title">
   <div class="modal modal-sm">
     <div class="modal-header">
       <h2 id="cp-modal-title">Change Server Port</h2>
-      <button class="modal-close" onclick="closeModal('crafty-port-modal')" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+      <button class="modal-close" data-action="close-modal" data-modal="crafty-port-modal" aria-label="Close" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
       </button>
@@ -758,76 +748,76 @@ window.MC_UI_CONFIG = {
 
     <!-- Form view -->
     <div id="cp-form-view">
-      <form id="crafty-port-form" onsubmit="submitCraftyPort();return false;">
-        <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+      <form id="crafty-port-form" data-action="submit-crafty-port">
+        <p class="u-note-16">
           Changing port for: <strong id="cp-server-name"></strong>
         </p>
         <div class="form-group">
           <label for="cp-port">New Port</label>
           <input type="number" id="cp-port" name="port" min="1024" max="65535" required placeholder="25565">
         </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);cursor:pointer;margin-bottom:20px;">
-          <input type="checkbox" id="cp-restart" style="width:16px;height:16px;">
+        <label class="u-toggle-row">
+          <input type="checkbox" id="cp-restart" class="u-icon-16">
           Stop server, change port, then restart
         </label>
         <div class="modal-footer">
-          <button type="button" class="btn btn-ghost" onclick="closeModal('crafty-port-modal')">Cancel</button>
+          <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="crafty-port-modal">Cancel</button>
           <button type="submit" class="btn btn-primary">Apply Port</button>
         </div>
       </form>
     </div>
 
     <!-- Progress view -->
-    <div id="cp-progress-view" style="display:none;">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:6px;">
+    <div id="cp-progress-view" class="u-hidden">
+      <p class="u-note-6">
         Changing port for <strong id="cp-progress-name"></strong> to <strong id="cp-progress-port"></strong>
       </p>
       <div class="steps" id="cp-steps"></div>
       <div id="cp-summary" class="step-summary"></div>
-      <div class="modal-footer" id="cp-progress-footer" style="display:none;">
-        <button type="button" class="btn btn-ghost" onclick="closeModal('crafty-port-modal')">Close</button>
+      <div class="modal-footer u-hidden" id="cp-progress-footer">
+        <button type="button" class="btn btn-ghost" data-action="close-modal" data-modal="crafty-port-modal">Close</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- Setup Wizard Modal -->
-<div class="modal-overlay {% if show_wizard %}open{% endif %}" id="wizard-modal" role="dialog" aria-modal="true" style="z-index: 1000;">
+<div class="modal-overlay {% if show_wizard %}open{% endif %} u-z-1000" id="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
   <div class="modal">
     <div class="modal-header">
-      <h2>Welcome to MC Router UI</h2>
+      <h2 id="wizard-title">Welcome to MC Router UI</h2>
       <!-- No close button for wizard, must skip or save -->
     </div>
     <form id="wizard-form" method="post" action="/settings/wizard">
-      <p style="font-size:13.5px;color:var(--text-2);margin-bottom:20px;line-height:1.6;">
+      <p class="u-lead">
         It looks like you haven't configured any API keys yet. You can set them up now to enable full functionality. You can also do this later in Settings.
       </p>
 
-      <div class="settings-card" style="margin-bottom:16px;">
-        <h3 style="font-size:14px;color:var(--accent);margin-bottom:12px;">Cloudflare DDNS (Optional)</h3>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label>Cloudflare API Token</label>
-          <input type="password" name="cf_token" placeholder="Token with DNS:Edit permissions">
+      <div class="settings-card u-mb-16">
+        <h3 class="u-heading-accent">Cloudflare DDNS (Optional)</h3>
+        <div class="form-group u-mb-12">
+          <label for="w-cf-token">Cloudflare API Token</label>
+          <input type="password" id="w-cf-token" name="cf_token" placeholder="Token with DNS:Edit permissions">
         </div>
-        <div class="form-group" style="margin:0;">
-          <label>Zone ID or Domain Name</label>
-          <input type="text" name="cf_zone" placeholder="e.g. example.com or 32-char ID">
-        </div>
-      </div>
-
-      <div class="settings-card" style="margin-bottom:20px;">
-        <h3 style="font-size:14px;color:var(--green);margin-bottom:12px;">Crafty Controller (Optional)</h3>
-        <div class="form-group" style="margin-bottom:12px;">
-          <label>Crafty API URL</label>
-          <input type="text" name="crafty_url" placeholder="https://crafty:8443">
-        </div>
-        <div class="form-group" style="margin:0;">
-          <label>Crafty API Token</label>
-          <input type="password" name="crafty_token" placeholder="JWT token">
+        <div class="form-group u-m-0">
+          <label for="w-cf-zone">Zone ID or Domain Name</label>
+          <input type="text" id="w-cf-zone" name="cf_zone" placeholder="e.g. example.com or 32-char ID">
         </div>
       </div>
 
-      <div class="modal-footer" style="justify-content: space-between;">
+      <div class="settings-card u-mb-20">
+        <h3 class="u-heading-green">Crafty Controller (Optional)</h3>
+        <div class="form-group u-mb-12">
+          <label for="w-crafty-url">Crafty API URL</label>
+          <input type="text" id="w-crafty-url" name="crafty_url" placeholder="https://crafty:8443">
+        </div>
+        <div class="form-group u-m-0">
+          <label for="w-crafty-token">Crafty API Token</label>
+          <input type="password" id="w-crafty-token" name="crafty_token" placeholder="JWT token">
+        </div>
+      </div>
+
+      <div class="modal-footer u-between">
         <button type="submit" name="skip" value="1" class="btn btn-ghost">Skip for now</button>
         <button type="submit" class="btn btn-primary">Save Configuration</button>
       </div>
@@ -836,6 +826,6 @@ window.MC_UI_CONFIG = {
 </div>
 
 <!-- Dashboard JS -->
-<script src="/static/js/dashboard.js?v=7"></script>
+<script src="/static/js/dashboard.js?v=8"></script>
 </body>
 </html>

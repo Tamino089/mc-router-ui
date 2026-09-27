@@ -2,6 +2,6 @@
 <div class="flash flash-{{ flash.type }}" role="{% if flash.type == 'error' %}alert{% else %}status{% endif %}">
   <span class="flash-icon" aria-hidden="true">{% if flash.type == 'error' %}⚠{% else %}✓{% endif %}</span>
   <span class="flash-msg">{{ flash.message }}</span>
-  <button class="flash-close" type="button" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+  <button class="flash-close" type="button" data-action="dismiss-flash" aria-label="Dismiss">✕</button>
 </div>
 {% endif %}

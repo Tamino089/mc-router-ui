@@ -1,13 +1,8 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   MC Router UI — Main Design System
-   Clean light/dark dual-theme dashboard
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* MC Router UI - Main Design System
+Clean light/dark dual-theme dashboard */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
-/* ── Design Tokens: Dark (default) — pure black, minimalist ───────────────────
-   True-black surfaces with restrained, low-saturation accents. Every surface
-   is distinguished by border/luminance only — no colored glows or gradients. */
+/* Design tokens: dark theme (default). Surfaces are distinguished by border
+luminance only, without gradients. */
 :root,
 [data-theme="dark"] {
   --bg:         #000000;
@@ -22,6 +17,7 @@
 
   --accent:         #ffffff;
   --accent-light:   #ffffff;
+  --on-accent:      #000000;
   --accent-dim:     rgba(255, 255, 255, 0.08);
   --accent-glow:    rgba(255, 255, 255, 0.12);
 
@@ -47,7 +43,7 @@
   color-scheme: dark;
 }
 
-/* ── Design Tokens: Light ──────────────────────────────────────────────────── */
+/* Design Tokens: Light */
 [data-theme="light"] {
   --bg:         #f6f7f9;
   --surface:    #ffffff;
@@ -61,6 +57,7 @@
 
   --accent:         #E6740C;
   --accent-light:   #F6821F;
+  --on-accent:      #ffffff;
   --accent-dim:     rgba(246, 130, 31, 0.08);
   --accent-glow:    rgba(246, 130, 31, 0.15);
 
@@ -86,7 +83,7 @@
   color-scheme: light;
 }
 
-/* ── Radii (shared) ────────────────────────────────────────────────────────── */
+/* Radii (shared) */
 :root {
   --r-sm:  8px;
   --r-md:  12px;
@@ -95,20 +92,20 @@
   --r-2xl: 24px;
 }
 
-/* ── Reset ──────────────────────────────────────────────────────────────────── */
+/* Reset */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* Any plain native checkbox/radio (e.g. the Crafty "restart" checkbox) picks
-   up the theme accent instead of the browser's raw default control. */
+up the theme accent instead of the browser's raw default control. */
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
-/* ── Base ───────────────────────────────────────────────────────────────────── */
+/* Base */
 html { scroll-behavior: smooth; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
@@ -116,15 +113,13 @@ body {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   HEADER
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* HEADER */
 header {
   height: 60px;
   background: var(--glass);
@@ -191,7 +186,7 @@ header {
 }
 .btn-logout:hover { color: var(--danger); border-color: var(--danger-glow); background: var(--danger-dim); }
 
-/* ── Status dots ────────────────────────────────────────────────────────────── */
+/* Status dots */
 .dot {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   transition: background 0.3s;
@@ -206,7 +201,7 @@ header {
   50%       { box-shadow: 0 0 0 4px transparent; }
 }
 
-/* ── Role badge ─────────────────────────────────────────────────────────────── */
+/* Role badge */
 .role-badge {
   font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   padding: 2px 7px; border-radius: 4px; letter-spacing: 0.06em;
@@ -215,9 +210,7 @@ header {
 .role-admin { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--border-accent); }
 .role-user  { background: var(--surface3); color: var(--muted); border: 1px solid var(--border); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   NAVIGATION TABS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* NAVIGATION TABS */
 .tabs-bar {
   display: flex; align-items: center; gap: 2px;
   border-radius: var(--r-md);
@@ -258,9 +251,7 @@ header {
 }
 .tab-btn.active .tab-count { background: var(--accent-dim); color: var(--accent); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MAIN LAYOUT
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* MAIN LAYOUT */
 main {
   max-width: 1280px;
   margin: 0 auto;
@@ -277,7 +268,7 @@ main {
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Section header ─────────────────────────────────────────────────────────── */
+/* Section header */
 .section-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 18px;
@@ -288,12 +279,10 @@ main {
 .section-title .count { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; }
 .section-actions { display: flex; gap: 8px; }
 
-/* ── Divider ─────────────────────────────────────────────────────────────────── */
+/* Divider */
 .section-divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   FLASH / TOAST NOTIFICATIONS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* FLASH / TOAST NOTIFICATIONS */
 .flash {
   display: flex; align-items: flex-start; gap: 11px;
   border-radius: var(--r-md); padding: 13px 16px;
@@ -350,7 +339,7 @@ main {
   margin-left: 8px; flex-shrink: 0;
   padding: 5px 12px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border: none; border-radius: 6px;
   font-size: 12.5px; font-weight: 600;
   cursor: pointer;
@@ -363,16 +352,14 @@ main {
   z-index: 10000;
   padding: 8px 16px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   text-align: center;
   font-size: 12.5px; font-weight: 600;
   box-shadow: var(--shadow-md);
   animation: toastIn 0.25s ease both;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   BUTTONS — clean, flat, no jumpy transforms
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* BUTTONS - clean, flat, no jumpy transforms */
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
   border: 1px solid transparent; border-radius: var(--r-sm);
@@ -436,16 +423,15 @@ main {
 .btn.loading::before {
   content: '';
   display: inline-block; width: 13px; height: 13px;
-  border: 2px solid currentColor; opacity: 0.25;
-  border-top-color: currentColor; opacity: 1;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 1;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   margin-right: 2px;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CARDS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* CARDS */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -453,9 +439,7 @@ main {
   overflow: hidden;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   DATA TABLE
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* DATA TABLE */
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th {
   padding: 10px 18px;
@@ -477,8 +461,8 @@ main {
 .data-table tbody tr:hover { background: var(--surface2); }
 .data-table tbody tr:first-child td { border-top: none; }
 
-/* ── Cell types ──────────────────────────────────────────────────────────────── */
-.mono { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+/* Cell types */
+.mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12.5px; }
 .text-muted  { color: var(--muted); }
 .text-white  { color: var(--text); font-weight: 600; }
 .text-accent { color: var(--accent); }
@@ -488,7 +472,7 @@ main {
   justify-content: flex-end; flex-wrap: wrap;
 }
 
-/* ── Inline copy button ─────────────────────────────────────────────────────── */
+/* Inline copy button */
 .copy-btn {
   background: none; border: none; cursor: pointer;
   padding: 2px 4px; border-radius: 4px;
@@ -498,20 +482,18 @@ main {
 .copy-btn:hover { color: var(--text); background: var(--surface3); }
 .copy-btn svg { width: 12px; height: 12px; }
 
-/* ── Backend pill ────────────────────────────────────────────────────────────── */
+/* Backend pill */
 .backend-pill {
   display: inline-flex; align-items: center; gap: 5px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 3px 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 12px; color: var(--text-2);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   BADGES / PILLS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* BADGES / PILLS */
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 9px; border-radius: 6px;
@@ -528,13 +510,11 @@ main {
 .badge-admin   { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--border-accent); }
 .badge-user    { background: var(--surface3); color: var(--muted); border: 1px solid var(--border); }
 
-/* ── Health cell ─────────────────────────────────────────────────────────────── */
+/* Health cell */
 .health-cell { display: flex; align-items: center; gap: 7px; }
 .health-label { font-size: 12px; color: var(--muted); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   EMPTY STATE
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* EMPTY STATE */
 .empty-state {
   text-align: center; padding: 64px 24px; color: var(--muted);
 }
@@ -548,9 +528,7 @@ main {
 .empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
 .empty-state p { font-size: 13.5px; margin-bottom: 24px; line-height: 1.6; max-width: 360px; margin-left: auto; margin-right: auto; }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   LOADING SPINNER
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* LOADING SPINNER */
 .loading-row td { text-align: center; padding: 40px !important; color: var(--muted); font-size: 13px; }
 .spinner {
   display: inline-block; width: 16px; height: 16px;
@@ -562,8 +540,9 @@ main {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Skeleton loading ───────────────────────────────────────────────────────── */
+/* Skeleton loading */
 .skeleton-row td { padding: 18px 16px !important; }
+.skeleton-cell { flex-shrink: 0; }
 .skeleton-cell {
   height: 16px; background: var(--border);
   border-radius: 4px; animation: sk-shimmer 1.5s infinite;
@@ -581,9 +560,7 @@ main {
   100% { opacity: 0.4; }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   MODALS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* MODALS */
 .modal-overlay {
   display: none;
   position: fixed; inset: 0; z-index: 500;
@@ -631,11 +608,10 @@ main {
   border-top: 1px solid var(--border);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   FORMS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* FORMS */
 .form-group { margin-bottom: 18px; }
-.form-group:last-of-type { margin-bottom: 0; }
+.modal .form-group:last-child,
+.modal .form-group:last-of-type { margin-bottom: 0; }
 
 .form-group label {
   display: block;
@@ -691,13 +667,9 @@ main {
 }
 .resolved-preview::before { content: "→ "; }
 
-/* ── Custom Toggle Switch ─────────────────────────────────────────────────── */
-/* NOTE: this is deliberately ".form-group label.toggle-row" (not just
-   ".toggle-row"). ".form-group label" above sets display:block, and since
-   that selector is MORE specific than a bare ".toggle-row" class, it was
-   silently winning the cascade and collapsing this flex switch into a
-   stacked, misaligned block — the "weirdly styled checkbox" bug. Qualifying
-   the selector this way guarantees this rule always wins. */
+/* Custom Toggle Switch */
+/* Qualified with .form-group because the more specific `.form-group label`
+rule above sets display:block and would otherwise win the cascade. */
 .form-group label.toggle-row {
   display: flex;
   align-items: center;
@@ -753,7 +725,7 @@ main {
 }
 .toggle-row input:checked + .toggle-slider::after {
   transform: translateX(18px);
-  background: #fff;
+  background: var(--on-accent);
 }
 
 .toggle-row input:focus-visible + .toggle-slider {
@@ -771,7 +743,7 @@ main {
 }
 @media (max-width: 700px) { .form-row { grid-template-columns: 1fr; } }
 
-/* ── Port status bar ──────────────────────────────────────────────────────────── */
+/* Port status bar */
 .port-status-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 9px 12px; border-radius: var(--r-sm); font-size: 12px; margin-top: 7px;
@@ -779,7 +751,7 @@ main {
 .port-status-bar.free  { background: var(--green-dim); border: 1px solid var(--green-glow); color: var(--green); }
 .port-status-bar.taken { background: var(--warn-dim);  border: 1px solid var(--warn-dim); color: var(--warn); }
 
-/* ── Live Validation UI ───────────────────────────────────────────────────────── */
+/* Live Validation UI */
 .validation-container {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -814,9 +786,7 @@ main {
 .val-warning { color: var(--text-2); } .val-warning .v-indicator { background: var(--warn-dim); color: var(--warn); }
 .val-error   { color: var(--text-2); } .val-error   .v-indicator { background: var(--danger-dim); color: var(--danger); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   SETTINGS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* SETTINGS */
 .settings-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
 }
@@ -845,14 +815,14 @@ main {
 .info-row:last-child { border-bottom: none; }
 .info-row .label { color: var(--muted); font-size: 12px; }
 .info-row .val-code {
-  font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11.5px;
   color: var(--text); background: var(--surface2);
   padding: 3px 8px; border-radius: 5px;
   border: 1px solid var(--border); max-width: 200px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* ── Permission editor ────────────────────────────────────────────────────────── */
+/* Permission editor */
 .perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
 @media (max-width: 600px) { .perm-grid { grid-template-columns: 1fr; } }
 
@@ -885,9 +855,7 @@ main {
   transform: rotate(45deg) translateY(-1px);
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CONFIRM SUMMARY (route confirmation modal)
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* CONFIRM SUMMARY (route confirmation modal) */
 .confirm-summary {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -904,7 +872,7 @@ main {
 .confirm-row .label { color: var(--muted); }
 .confirm-row .val {
   color: var(--text); font-weight: 500;
-  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12.5px;
 }
 
 .issue-box {
@@ -916,9 +884,7 @@ main {
   line-height: 1.6; margin-bottom: 18px;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CRAFTY SERVER CARDS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* CRAFTY SERVER CARDS */
 .server-name-cell { display: flex; align-items: center; gap: 10px; }
 .server-status-icon { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .server-running   { background: var(--green); box-shadow: 0 0 6px var(--green-glow); animation: pulseGreen 2.5s ease-in-out infinite; }
@@ -952,9 +918,7 @@ main {
 }
 .player-count .max { color: var(--muted); font-weight: 400; }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   CLOUDFLARE DNS SECTION
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* CLOUDFLARE DNS SECTION */
 .cf-badge {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 8px; border-radius: 5px;
@@ -965,9 +929,7 @@ main {
 
 .ts-rel { font-size: 12px; color: var(--muted); }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   ROUTE MODAL — simplified create form
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* ROUTE MODAL - simplified create form */
 .route-modal-field {
   position: relative;
 }
@@ -1007,9 +969,7 @@ main {
   box-shadow: 0 0 0 3px var(--accent-glow) !important;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   RESPONSIVE
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* RESPONSIVE */
 @media (max-width: 1024px) {
   .header-center { display: none; }
 }
@@ -1049,9 +1009,7 @@ main {
   .header-right { gap: 4px; }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   PORT CHANGE STEP PROGRESS
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* PORT CHANGE STEP PROGRESS */
 .steps { margin: 8px 0 4px; }
 .step {
   display: flex; align-items: center; gap: 12px;
@@ -1094,3 +1052,112 @@ main {
 }
 
 
+
+
+/* Utility classes used by the templates in place of inline styles, which a
+   strict Content-Security-Policy does not allow. */
+.u-hidden { display: none; }
+.u-m-0 { margin: 0; }
+.u-mx-auto { margin-left: auto; margin-right: auto; }
+.u-mt-32 { margin-top: 32px; }
+.u-mb-12 { margin-bottom: 12px; }
+.u-mb-16 { margin-bottom: 16px; }
+.u-mb-18 { margin-bottom: 18px; }
+.u-mb-20 { margin-bottom: 20px; }
+.u-mb-26 { margin-bottom: 26px; }
+.u-text-right { text-align: right; }
+.u-between { justify-content: space-between; }
+.u-self-start { align-self: flex-start; }
+.u-muted { color: var(--muted); }
+.u-muted-normal { color: var(--muted); font-weight: 400; }
+.u-green { color: var(--green); }
+.u-accent { color: var(--accent); }
+.u-row { display: flex; align-items: center; gap: 8px; }
+.u-row-tight { display: flex; align-items: center; gap: 6px; }
+.u-row-9 { display: flex; align-items: center; gap: 9px; }
+.u-col { display: flex; flex-direction: column; gap: 14px; }
+.u-fs-11 { font-size: 11px; }
+.u-fs-11-normal { font-size: 11px; font-weight: 400; }
+.u-fs-12 { font-size: 12px; }
+.u-fs-15 { font-size: 15px; }
+.u-strong-15 { font-size: 15px; font-weight: 700; color: var(--text); }
+.u-card-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+}
+.u-hint-green { font-size: 11px; font-weight: 500; color: var(--green); margin-left: 4px; }
+.u-lead { font-size: 13.5px; color: var(--text-2); margin-bottom: 20px; line-height: 1.6; }
+.u-lead-muted { font-size: 13.5px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+.u-note { color: var(--muted); font-size: 13px; }
+.u-note-danger { color: var(--danger); font-size: 13px; }
+.u-note-6 { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.u-note-16 { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.u-note-18 { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.u-heading-accent { font-size: 14px; color: var(--accent); margin-bottom: 12px; }
+.u-heading-green { font-size: 14px; color: var(--green); margin-bottom: 12px; }
+.u-inline-icon { display: inline; vertical-align: middle; margin-right: 6px; }
+.u-inline-dot { display: inline-block; margin-left: 6px; }
+.u-icon-16 { width: 16px; height: 16px; }
+.u-z-1000 { z-index: 1000; }
+.u-toggle-row {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  color: var(--text-2); cursor: pointer; margin-bottom: 20px;
+}
+
+/* Inline spinner sized to fit inside a button or table cell. */
+.spinner-inline { width: 14px; height: 14px; margin: 0; }
+.spinner-sm { width: 14px; height: 14px; }
+
+/* Full-width message row inside a data table. */
+.table-msg { text-align: center; padding: 32px; color: var(--muted); }
+.table-msg-error { text-align: center; padding: 32px; color: var(--danger); }
+
+/* CPU / RAM meters in the Crafty server table. */
+.progress-stack { display: flex; flex-direction: column; gap: 5px; min-width: 100px; }
+.progress-label { font-size: 10px; width: 28px; }
+
+/* Initials badge in the user table. */
+.user-avatar {
+  width: 30px; height: 30px; font-size: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--surface3);
+  border: 1px solid var(--border); color: var(--text-2); font-weight: 600;
+}
+
+/* Warning banner shown while the bootstrap admin password is unchanged. */
+.alert {
+  border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+  font-size: 13px; line-height: 1.6; border: 1px solid var(--border);
+}
+.alert-warning {
+  background: var(--warn-dim); border-color: var(--warn); color: var(--text);
+}
+.alert code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* Inline validation feedback and the port-change step labels, which previously
+   relied on JavaScript-set inline styles. */
+.validation-item { display: flex; align-items: center; gap: 8px; }
+.validation-item .v-message {
+  margin-left: auto; font-size: 11.5px; color: var(--muted);
+  text-align: right; max-width: 55%;
+}
+.validation-item.val-error .v-message { color: var(--danger); }
+.validation-item.val-warning .v-message { color: var(--warn); }
+.validation-item.val-success .v-message { color: var(--green); }
+.val-neutral { color: var(--muted); }
+.val-checking { color: var(--muted); }
+.val-success { color: var(--green); }
+.val-warning { color: var(--warn); }
+.val-error { color: var(--danger); }
+.v-indicator {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; flex-shrink: 0; font-size: 11px; font-weight: 700;
+}
+
+.step-label { font-size: 13px; font-weight: 600; color: var(--text); }
+
+/* Skeleton placeholders span the real column count. */
+.skeleton-span { display: flex; gap: 12px; padding: 10px 12px; }

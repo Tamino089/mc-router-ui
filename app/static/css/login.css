@@ -1,13 +1,9 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   MC Router UI — Login Page Styles
-   Clean light/dark dual-theme
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* MC Router UI — Login Page Styles
+Clean light/dark dual-theme */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Dark tokens (default) ─────────────────────────────────────────────────── */
+/* Dark tokens (default) */
 :root,
 [data-theme="dark"] {
   --bg:          #0e0f13;
@@ -28,7 +24,7 @@
   color-scheme: dark;
 }
 
-/* ── Light tokens ──────────────────────────────────────────────────────────── */
+/* Light tokens */
 [data-theme="light"] {
   --bg:          #f6f7f9;
   --surface:     #ffffff;
@@ -50,11 +46,11 @@
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* ── Body ─────────────────────────────────────────────────────────────────────── */
+/* Body */
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -62,7 +58,8 @@ body {
   flex-direction: column;
   gap: 20px;
   padding: 24px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
   -webkit-font-smoothing: antialiased;
   transition: background 0.2s ease, color 0.2s ease;
@@ -78,7 +75,7 @@ body::before {
   pointer-events: none; z-index: 0;
 }
 
-/* ── Card ────────────────────────────────────────────────────────────────────── */
+/* Card */
 .card {
   background: var(--glass);
   border: 1px solid var(--border);
@@ -102,14 +99,14 @@ body::before {
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Logo ─────────────────────────────────────────────────────────────────────── */
+/* Logo */
 .logo { margin-bottom: 36px; }
 .logo h1 {
   font-size: 22px; font-weight: 700; color: var(--text);
   letter-spacing: -0.5px; line-height: 1.1; margin: 0;
 }
 
-/* ── Error alert ──────────────────────────────────────────────────────────────── */
+/* Error alert */
 .error-alert {
   display: flex; align-items: flex-start; gap: 10px;
   background: var(--danger-glow);
@@ -130,7 +127,7 @@ body::before {
   100% { transform: translateX(0); }
 }
 
-/* ── Form ─────────────────────────────────────────────────────────────────────── */
+/* Form */
 .form-group { margin-bottom: 18px; }
 
 .form-group label {
@@ -158,7 +155,7 @@ body::before {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-/* ── Password show/hide toggle ──────────────────────────────────────────────── */
+/* Password show/hide toggle */
 .password-wrap { position: relative; }
 .password-wrap input { padding-right: 44px; }
 .password-toggle {
@@ -174,7 +171,7 @@ body::before {
 }
 .password-toggle:hover { color: var(--text); background: rgba(128, 128, 128, 0.12); }
 
-/* ── Submit button ────────────────────────────────────────────────────────────── */
+/* Submit button */
 .btn-login {
   width: 100%; margin-top: 8px;
   background: var(--accent);
@@ -201,11 +198,20 @@ body::before {
   to   { transform: translateX(100%); }
 }
 
-/* ── Footer ───────────────────────────────────────────────────────────────────── */
+/* Footer */
 .footer-text {
   position: relative; z-index: 10;
   font-size: 12px;
   color: var(--muted);
   opacity: 0.5;
   text-align: center;
+}
+
+/* Respect reduced-motion preferences on the login page too. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
