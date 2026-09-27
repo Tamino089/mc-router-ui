@@ -1,4 +1,7 @@
-# Python
+# Files that must never enter the build context.
+# The image only needs app/, requirements.txt and supervisord.conf.
+
+# Python bytecode and build output.
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,31 +11,55 @@ __pycache__/
 dist/
 build/
 
-# Environment
+# Virtual environments. Excluding these keeps the context small; without this
+# the whole venv is uploaded on every build.
+.venv/
+venv/
+env/
+
+# Test and tooling caches.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Tests and development tooling are not part of the runtime image.
+tests/
+requirements-dev.txt
+pyproject.toml
+.editorconfig
+
+# Secrets and local environment.
 .env
 .env.*
+!.env.example
 *.env
 
-# Version control
+# Version control and CI.
 .git/
 .gitignore
 .gitattributes
+.github/
 
-# IDE
+# Documentation and packaging metadata.
+*.md
+*.xml
+docs/
+scripts/
+
+# Editor and OS noise.
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
-
-# Docs / project files
-*.md
-*.xml
-docs/
-
-# GitHub Actions
-.github/
-
-# Misc
 .DS_Store
 Thumbs.db
+
+# Logs and local databases.
 *.log
+*.db
+*.db-wal
+*.db-shm

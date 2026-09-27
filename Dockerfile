@@ -1,9 +1,10 @@
-# Stage 1: the mc-router binary, pinned to a released version rather than
-# "latest" so a rebuild cannot silently change the router underneath the UI.
-FROM itzg/mc-router:v1.47.1 AS mcrouter
+# Stage 1: the mc-router binary, pinned by version and digest so a rebuild
+# cannot silently change the router underneath the UI. Note that the image tag
+# has no "v" prefix even though the GitHub release tag does.
+FROM itzg/mc-router:1.47.1@sha256:177433dd91507339924d60205a19ae9a289afd0e69dbad54e1a55d497f7523f8 AS mcrouter
 
 # Stage 2: runtime image.
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
 
 ARG APP_UID=1000
 ARG APP_GID=1000
@@ -31,10 +32,14 @@ COPY supervisord.conf /etc/supervisor/conf.d/mcrouter.conf
 
 # The container runs unprivileged. /data must be writable by APP_UID, and the
 # Docker socket requires either group_add or an explicit `user: root` override.
-RUN groupadd --gid "${APP_GID}" app \
-    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --no-create-home --shell /usr/sbin/nologin app \
-    && mkdir -p /data /var/log/supervisor /var/run \
-    && chown -R "${APP_UID}:${APP_GID}" /data /var/log/supervisor /srv
+# groupadd falls back to an automatic gid so a collision in the base image
+# cannot break the build; the user is then added by group name.
+RUN set -eux; \
+    groupadd --gid "${APP_GID}" app || groupadd app; \
+    useradd --uid "${APP_UID}" --gid app --no-create-home \
+        --shell /usr/sbin/nologin app; \
+    mkdir -p /data /var/log/supervisor; \
+    chown -R app:app /data /var/log/supervisor /srv
 
 VOLUME ["/data"]
 

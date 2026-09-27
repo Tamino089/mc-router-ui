@@ -93,8 +93,12 @@ All notable changes to this project are documented here. This project follows
 
 - The container runs as an unprivileged `app` user, includes `no-new-privileges`
   and drops all capabilities in Compose.
-- The `itzg/mc-router` base image is pinned to a release tag instead of
-  `latest`.
+- Both base images are pinned by version and digest instead of `latest`. Note
+  that the mc-router image tag has no `v` prefix even though its GitHub release
+  tag does, so `v1.47.1` does not exist as an image tag.
+- `.dockerignore` now excludes the virtualenv, tests and tooling caches. It
+  previously omitted `.venv/`, so every build uploaded a 95 MB virtualenv as
+  build context.
 - `mc-router` no longer receives `--routes-config`; routes are provisioned
   through the REST API and persisted in SQLite.
 - Google Fonts was replaced with a system font stack, so the UI works offline
