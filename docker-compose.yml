@@ -1,87 +1,97 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# MC Router UI — All-in-one Container
+# MC Router UI, all-in-one container.
 #
-# Unraid users: Configure environment variables directly in the Unraid Docker UI.
-# All ports and paths are controlled via ENV — no need to edit this file.
+# Unraid users: set the variables in the Unraid Docker UI instead; every port
+# and path here is controlled by environment variables.
 #
-# ⚠️  NETWORKING — READ THIS IF ROUTES NEVER SHOW "REACHABLE":
-# Health checks and the Crafty integration both make a direct TCP/HTTP
-# connection FROM this container TO your backend (Minecraft server / Crafty).
-# On the default "bridge" network, Docker's embedded DNS does NOT resolve
-# other containers by name (e.g. "crafty") unless they share a custom
-# user-defined network with this one — so a backend like "crafty:25565" will
-# simply never come up healthy, no matter how correct your setup is.
+# NETWORKING: health checks and the Crafty integration open a direct TCP or HTTP
+# connection from this container to your backend (Minecraft server or Crafty).
+# On the default bridge network Docker's embedded DNS does not resolve other
+# containers by name (such as "crafty") unless they share a user-defined network
+# with this one, so a backend like "crafty:25565" never becomes healthy.
 #
-# Fix ONE of the following:
-#   1. Set `network_mode: host` below (simplest — this container then behaves
-#      like a normal process on the LAN and can reach anything by IP or
-#      hostname the host itself can reach), OR
-#   2. Put this container on the SAME user-defined Docker network as your
-#      Minecraft/Crafty containers, OR
-#   3. Always use routable LAN IPs (e.g. 192.168.1.50:25565) instead of
-#      Docker container names in route "Backend" fields and CRAFTY_URL.
-# ─────────────────────────────────────────────────────────────────────────────
+# Fix any one of the following:
+#   1. Use `network_mode: host` as below, so the container reaches anything the
+#      host can reach by IP or hostname.
+#   2. Put this container on the same user-defined network as the Minecraft and
+#      Crafty containers.
+#   3. Always use routable LAN addresses (for example 192.168.1.50:25565) rather
+#      than container names in route backends and CRAFTY_URL.
 
 services:
   mc-router-ui:
     build: .
+    image: ghcr.io/tamino089/mc-router-ui:latest
     container_name: mc-router-ui
     restart: unless-stopped
 
-    # Recommended: host networking so this container can reach LAN/Docker
-    # backends the same way the Unraid host itself can. Comment this out and
-    # uncomment the `ports:` block below only if you've put this container on
-    # the same custom network as every backend it needs to reach.
+    # Host networking lets the container reach LAN and Docker backends exactly
+    # as the host does. Comment it out and use the ports block below only when
+    # this container shares a custom network with every backend it must reach.
     network_mode: host
 
     # ports:
-    #   - "${MC_PORT:-25565}:25565"   # Minecraft — must be reachable via port-forwarding/DynDNS
-    #   - "${UI_PORT:-8090}:8000"     # Web UI — place behind NPM/Cloudflare Tunnel
+    #   - "${MC_PORT:-25565}:25565"   # Minecraft; must be reachable via port forwarding
+    #   - "${UI_PORT:-8090}:8000"     # Web UI; put behind a reverse proxy
 
     environment:
-      # ── mc-router ─────────────────────────────────────────────────────────
-      MC_PORT:       ${MC_PORT:-25565}      # Minecraft ingress port (internal)
-      API_PORT:      ${API_PORT:-8080}      # mc-router REST API (internal, not exposed)
+      # mc-router.
+      MC_PORT:       ${MC_PORT:-25565}
+      API_PORT:      ${API_PORT:-8080}
       MC_ROUTER_API: http://localhost:${API_PORT:-8080}
 
-      # ── Web UI ────────────────────────────────────────────────────────────
+      # Web UI.
       DB_PATH:         /data/mcrouter-ui.db
       ADMIN_USERNAME:  ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD:  ${ADMIN_PASSWORD:-changeme}   # CHANGE THIS!
-      # SECRET_KEY is auto-generated on first start and persisted to the DB.
-      # Optionally override: SECRET_KEY: your-own-secret
+      # Required on first start. Must be at least 12 characters; the documented
+      # default is refused with a warning and flagged in the UI.
+      ADMIN_PASSWORD:  ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env (min 12 characters)}
+      # SECRET_KEY is generated on first start and persisted to the database.
+      # Set it only to pin a specific key.
 
-      # ── Cloudflare DDNS (optional) ────────────────────────────────────────
-      # When adding a route, a DNS-only (grey cloud) A-record is created/updated.
-      # IP changes are synced every DDNS_INTERVAL_SECONDS seconds automatically.
-      CLOUDFLARE_API_TOKEN:    ${CLOUDFLARE_API_TOKEN:-}
-      CLOUDFLARE_ZONE_ID:      ${CLOUDFLARE_ZONE_ID:-}
-      # Alternative to ZONE_ID: provide zone name, ID is resolved automatically
-      CLOUDFLARE_ZONE_NAME:    ${CLOUDFLARE_ZONE_NAME:-}
-      DDNS_INTERVAL_SECONDS:   ${DDNS_INTERVAL_SECONDS:-300}
+      # Session cookies. Enable SESSION_HTTPS_ONLY when serving over TLS.
+      SESSION_HTTPS_ONLY: ${SESSION_HTTPS_ONLY:-false}
+      SESSION_SAME_SITE:  ${SESSION_SAME_SITE:-lax}
+      SESSION_MAX_AGE:    ${SESSION_MAX_AGE:-1209600}
 
-      # ── Crafty Controller (optional) ──────────────────────────────────────
-      CRAFTY_URL:           ${CRAFTY_URL:-}
-      CRAFTY_API_KEY:       ${CRAFTY_API_KEY:-}
-      # Path to Crafty servers directory (for server.properties editing)
-      CRAFTY_SERVERS_DIR:   ${CRAFTY_SERVERS_DIR:-}
-      # Self-hosted Crafty almost always uses a self-signed TLS certificate.
-      # Set to "true" if CRAFTY_URL is on your trusted local network — leave
-      # unset/false if CRAFTY_URL points anywhere outside your LAN.
+      # Cloudflare DDNS (optional). Adding a route creates or updates a DNS-only
+      # A-record, and the public IP is re-checked every DDNS_INTERVAL_SECONDS.
+      CLOUDFLARE_API_TOKEN:  ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ZONE_ID:    ${CLOUDFLARE_ZONE_ID:-}
+      CLOUDFLARE_ZONE_NAME:  ${CLOUDFLARE_ZONE_NAME:-}
+      DDNS_INTERVAL_SECONDS: ${DDNS_INTERVAL_SECONDS:-300}
+
+      # Crafty Controller (optional).
+      CRAFTY_URL:                  ${CRAFTY_URL:-}
+      CRAFTY_API_KEY:              ${CRAFTY_API_KEY:-}
+      CRAFTY_SERVERS_DIR:          ${CRAFTY_SERVERS_DIR:-}
+      # Self-hosted Crafty usually uses a self-signed certificate. Enable this
+      # only when CRAFTY_URL is on a network you trust.
       CRAFTY_INSECURE_SKIP_VERIFY: ${CRAFTY_INSECURE_SKIP_VERIFY:-}
-      # Hostname/IP for TCP health checks to Crafty servers (e.g. "crafty" or "192.168.1.50")
-      CRAFTY_CONTAINER_HOST: ${CRAFTY_CONTAINER_HOST:-}
+      CRAFTY_CONTAINER_HOST:       ${CRAFTY_CONTAINER_HOST:-}
+
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
     volumes:
-      - mc-router-ui-data:/data   # SQLite DB + persistence
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker socket (read-only) for route discovery
+      - mc-router-ui-data:/data
+      # Read-only socket for route discovery. The container runs unprivileged, so
+      # grant access with group_add (the group id of the socket owner, 999 on a
+      # typical Linux Docker install) or override with `user: root`.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    group_add:
+      - "${DOCKER_SOCKET_GID:-999}"
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=4)"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
 volumes:
   mc-router-ui-data:

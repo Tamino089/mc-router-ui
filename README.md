@@ -46,7 +46,8 @@ services:
     environment:
       MC_ROUTER_API: http://mc-router:8080
       ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: changeme
+      # Required, at least 12 characters.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set a strong admin password}
       # Cloudflare DDNS (optional)
       CLOUDFLARE_API_TOKEN: ""
       CLOUDFLARE_ZONE_ID: ""
@@ -82,7 +83,7 @@ Images are automatically built and published to [GitHub Container Registry](http
 | `MC_ROUTER_API` | `http://localhost:8080` | mc-router REST API URL |
 | `MC_PORT` | `25565` | Default Minecraft port |
 | `ADMIN_USERNAME` | `admin` | Initial admin username |
-| `ADMIN_PASSWORD` | `changeme` | Initial admin password — **change before deployment** |
+| `ADMIN_PASSWORD` | *none* | Bootstrap admin password, required on first start, at least 12 characters. The documented default is refused with a warning and a banner. |
 | `SECRET_KEY` | *(auto-generated)* | Session signing key — generated & persisted to DB on first run |
 | `DB_PATH` | `/data/mcrouter-ui.db` | SQLite database file path |
 
@@ -128,6 +129,16 @@ volumes:
 |---|---|---|
 | `HEALTH_CHECK_INTERVAL` | `30` | Seconds between background health checks |
 | `HEALTH_HISTORY_RETENTION_HOURS` | `24` | How long to keep health history |
+
+### Sessions and runtime
+
+| Variable | Default | Description |
+|---|---|---|
+| `SESSION_HTTPS_ONLY` | `false` | Set to `true` behind a TLS-terminating proxy. Also enables HSTS. |
+| `SESSION_SAME_SITE` | `lax` | `SameSite` attribute for the session cookie |
+| `SESSION_MAX_AGE` | `1209600` | Session lifetime in seconds (14 days) |
+| `LOG_LEVEL` | `INFO` | `CRITICAL`, `ERROR`, `WARNING`, `INFO` or `DEBUG` |
+| `MIN_PASSWORD_LENGTH` | `12` | Minimum password length for user accounts |
 
 ---
 
@@ -202,7 +213,7 @@ Admins have full access. Regular users can be assigned any combination of:
 
 ## Unraid
 
-1. Install the template from **Docker → Add Container → Template → MC-Router-UI** (after importing `my-mc-router-ui.xml` to `/boot/config/plugins/docker/templates-user/`).
+1. Install the template from **Docker, then Add Container, then Template, then MC-Router-UI** (after importing `my-mc-router-ui.xml` to `/boot/config/plugins/docker/templates-user/`).
 2. The container uses `ghcr.io/tamino089/mc-router-ui:latest` — the **Update** button pulls the latest pre-built image automatically.
 3. Set your admin credentials and optional Cloudflare/Crafty settings in the UI fields.
 4. Defaults to **Host networking** — see the template overview note if switching to Bridge.
@@ -213,19 +224,21 @@ Admins have full access. Regular users can be assigned any combination of:
 
 ## Architecture
 
-```
-supervisord
-├── uvicorn (FastAPI app — port 8000)
-│   ├── /app/main.py          ← Application entry, lifespan, dashboard
-│   ├── /app/core/            ← Config, CSRF middleware, security helpers
-│   ├── /app/db/              ← SQLite schema, migrations, connection manager
-│   ├── /app/routes/          ← All HTTP handlers (auth, routes, users, etc.)
-│   └── /app/services/        ← Business logic (Cloudflare, Crafty, health, SSE)
-└── mc-router (Minecraft reverse proxy — port 25565, API 8080)
-```
+supervisord runs two processes in one container: uvicorn serving the FastAPI app
+on port 8000, and the mc-router binary listening for Minecraft on port 25565
+with its REST API on 8080.
 
-Data is persisted in a single SQLite file at `/data/mcrouter-ui.db`.  
-Static assets are served from `/app/static/`. Templates use Jinja2.
+| Path | Contents |
+|---|---|
+| `app/main.py` | Application entry point, lifespan, dashboard route |
+| `app/core/` | Configuration, CSRF middleware, security headers, validation |
+| `app/db/` | SQLite schema, migrations, connection handling |
+| `app/routes/` | HTTP handlers for auth, routes, users, settings, monitoring |
+| `app/services/` | mc-router, Cloudflare, Crafty, Docker, health and SSE logic |
+| `app/static/`, `app/templates/` | Front-end assets and Jinja2 templates |
+| `tests/` | Pytest suite |
+
+Data is persisted in a single SQLite file at `/data/mcrouter-ui.db`.
 
 See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for a deep-dive.
 
@@ -255,6 +268,28 @@ Check that `MC_ROUTER_API` points to a reachable mc-router instance with `API_BI
 
 ---
 
+## Security
+
+Passwords use PBKDF2-HMAC-SHA256, sessions are signed cookies, and every
+mutating request must be same-origin. A strict Content-Security-Policy with a
+per-response nonce is served, and the served markup contains no inline event
+handlers or style attributes.
+
+The container runs as an unprivileged user and drops all capabilities. Mounting
+the Docker socket is still a privileged capability, so mount it only if you want
+route discovery from container labels.
+
+See [SECURITY.md](./SECURITY.md) for reporting and deployment guidance.
+
+## Development
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check .
+.venv/bin/pytest
+```
+
 ## License
 
-MIT
+MIT. See [LICENSE](./LICENSE).

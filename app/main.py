@@ -183,9 +183,9 @@ async def dashboard(request: Request):
     total_connections = sum(r["active_connections"] for r in routes_data)
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "current_user": user,
             "user_perms": user_perms,
             "flash": flash,

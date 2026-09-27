@@ -71,6 +71,12 @@ async def broadcast(event: str, data: Any) -> None:
     for q, allowed in list(_subscribers.items()):
         if event == "connections":
             payload = json.dumps(_visible(data, allowed))
+        elif event == "route-change" and isinstance(data, dict) and data.get("hostname"):
+            # A change to a route the subscriber cannot see must not leak its
+            # hostname. Events without a hostname are refresh triggers only.
+            if allowed is not None and data["hostname"] not in allowed:
+                continue
+            payload = json.dumps(data)
         else:
             payload = json.dumps(data)
         try:

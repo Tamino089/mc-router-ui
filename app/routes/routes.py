@@ -99,7 +99,9 @@ async def _resolve_hostname(raw_hostname: str, is_default: bool):
                 "Hostname must be a valid FQDN (for example play.example.com)"
             )
     else:
-        cf_token, _, _ = await cloudflare.get_cf_config()
+        # get_cf_config reads the database synchronously; awaiting it raised
+        # TypeError and broke every subdomain-only route.
+        cf_token, _, _ = cloudflare.get_cf_config()
         if not cf_token:
             return None, _error(
                 "Cloudflare not configured. Provide a full FQDN "
@@ -291,6 +293,15 @@ async def edit_route(request: Request, route_id: int):
 
             old_hostname = row["hostname"]
             old_backend = row["backend"]
+
+        # Checked outside the connection: this hits the Docker socket, and the
+        # connection must not be held open across network calls.
+        if await docker_watcher.is_docker_managed(old_hostname):
+            return _error(
+                f"'{old_hostname}' is managed by a Docker container label "
+                "and cannot be edited here",
+                409,
+            )
 
         dns_done = False
         cf_err = None

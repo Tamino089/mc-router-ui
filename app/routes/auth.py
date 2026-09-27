@@ -30,9 +30,9 @@ def _client_ip(request: Request) -> str:
 
 def _render_login(request: Request, error: str, status_code: int, username: str = ""):
     return templates.TemplateResponse(
+        request,
         "login.html",
         {
-            "request": request,
             "error": error,
             "last_username": username,
             "csp_nonce": getattr(request.state, "csp_nonce", ""),
@@ -46,8 +46,9 @@ async def login_form(request: Request):
     if current_user(request):
         return RedirectResponse(url="/", status_code=303)
     return templates.TemplateResponse(
+        request,
         "login.html",
-        {"request": request, "csp_nonce": getattr(request.state, "csp_nonce", "")},
+        {"csp_nonce": getattr(request.state, "csp_nonce", "")},
     )
 
 

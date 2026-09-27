@@ -10,9 +10,12 @@ from pathlib import Path
 DB_PATH = Path(os.getenv("DB_PATH", "/data/mcrouter-ui.db"))
 
 # Admin credentials used only to bootstrap the first admin account.
-ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "changeme")
+# An empty or whitespace-only ADMIN_PASSWORD falls back to the documented
+# default rather than creating an account with a blank password; the default is
+# warned about at startup and flagged in the UI until it is changed.
+ADMIN_USER = os.getenv("ADMIN_USERNAME", "").strip() or "admin"
 DEFAULT_ADMIN_PASSWORD = "changeme"  # noqa: S105 - documented insecure default, warned about at startup
+ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "").strip() or DEFAULT_ADMIN_PASSWORD
 
 # mc-router API
 MC_ROUTER_API = os.getenv("MC_ROUTER_API", "http://localhost:8080")

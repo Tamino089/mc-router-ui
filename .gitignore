@@ -1,10 +1,10 @@
-# ── Secrets / env ─────────────────────────────────────────
+# Secrets and environment.
 .env
 .env.*
 !.env.example
 *.env
 
-# ── Python ───────────────────────────────────────────────
+# Python.
 __pycache__/
 *.py[cod]
 *.pyo
@@ -21,15 +21,18 @@ build/
 .coverage
 htmlcov/
 
-# ── IDE ───────────────────────────────────────────────────
+# IDE.
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
-# ── OS ────────────────────────────────────────────────────
+# OS.
 .DS_Store
 Thumbs.db
 
-# ── Logs / runtime ────────────────────────────────────────
+# Logs and runtime data.
 *.log
+*.db
+*.db-wal
+*.db-shm
