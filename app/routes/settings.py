@@ -1,22 +1,32 @@
 """
-Settings and password changes.
+Settings and password change routes.
 """
+
+import asyncio
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
+from app.core.config import MIN_PASSWORD_LENGTH
 from app.core.ratelimit import RateLimiter
-from app.core.security import current_user, verify_password, hash_password
+from app.core.security import current_user, hash_password, verify_password
+from app.core.validation import normalize_base_url
 from app.db.database import get_db
-from app.db.schema import user_has_perm
+from app.db.schema import DEFAULT_PASSWORD_SETTING, user_has_perm
 from app.routes import set_flash
+from app.services import cloudflare
 
 router = APIRouter()
 
-# Brute-force throttle on the password-change endpoint, keyed per user id.
-# The "current password" field is the credential an attacker would try to
-# guess, so limit how often it may be wrong within a short window.
+# Throttles guessing of the current password through the change-password form.
 password_change_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+
+SETTINGS_URL = "/?tab=settings"
+
+
+def _redirect_with_flash(request: Request, kind: str, message: str, url: str = SETTINGS_URL):
+    set_flash(request, kind, message)
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/settings/password")
@@ -32,31 +42,44 @@ async def change_password(
 
     limiter_key = f"user:{user['id']}"
     if await password_change_limiter.is_limited(limiter_key):
-        set_flash(request, "error", "Too many attempts. Please wait a minute and try again.")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(
+            request, "error", "Too many attempts. Please wait a minute and try again."
+        )
 
-    if len(new_password) < 6:
+    if len(new_password) < MIN_PASSWORD_LENGTH:
         await password_change_limiter.record(limiter_key)
-        set_flash(request, "error", "Password must be at least 6 characters")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(
+            request,
+            "error",
+            f"Password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
     if new_password != confirm_password:
         await password_change_limiter.record(limiter_key)
-        set_flash(request, "error", "New passwords do not match")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(request, "error", "New passwords do not match")
 
     with get_db() as con:
-        r_user = con.execute("SELECT password_hash FROM users WHERE id=?", (user["id"],)).fetchone()
-        if not r_user or not verify_password(current_password, r_user["password_hash"]):
-            await password_change_limiter.record(limiter_key)
-            set_flash(request, "error", "Incorrect current password")
-            return RedirectResponse(url="/?tab=settings", status_code=303)
+        row = con.execute(
+            "SELECT password_hash FROM users WHERE id=?", (user["id"],)
+        ).fetchone()
 
-        hashed = hash_password(new_password)
-        con.execute("UPDATE users SET password_hash=? WHERE id=?", (hashed, user["id"]))
+    if not row or not await asyncio.to_thread(
+        verify_password, current_password, row["password_hash"]
+    ):
+        await password_change_limiter.record(limiter_key)
+        return _redirect_with_flash(request, "error", "Incorrect current password")
+
+    hashed = await asyncio.to_thread(hash_password, new_password)
+    with get_db() as con:
+        con.execute(
+            "UPDATE users SET password_hash=? WHERE id=?", (hashed, user["id"])
+        )
+        # The bootstrap password is no longer in use, so drop the nag banner.
+        con.execute(
+            "DELETE FROM settings WHERE key=?", (DEFAULT_PASSWORD_SETTING,)
+        )
         con.commit()
 
-    set_flash(request, "success", "Password changed successfully.")
-    return RedirectResponse(url="/?tab=settings", status_code=303)
+    return _redirect_with_flash(request, "success", "Password changed successfully.")
 
 
 @router.post("/settings/cloudflare")
@@ -68,50 +91,69 @@ async def save_cloudflare_settings(
 ):
     user = current_user(request)
     if not user or not user_has_perm(user, "manage_cloudflare"):
-        set_flash(request, "error", "Permission denied")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(request, "error", "Permission denied")
 
     token = cf_token.strip()
     with get_db() as con:
-        # Blank field means "leave unchanged" — never overwrite an existing
-        # token with an empty string just because the form re-rendered it.
+        # A blank field means "leave unchanged", so a re-rendered form cannot
+        # erase a stored token.
         if token:
-            con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_api_token',?)", (token,))
-        con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_id',?)", (cf_zone_id.strip(),))
-        con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_name',?)", (cf_zone_name.strip(),))
+            con.execute(
+                "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_api_token',?)",
+                (token,),
+            )
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_id',?)",
+            (cf_zone_id.strip(),),
+        )
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_name',?)",
+            (cf_zone_name.strip(),),
+        )
         con.commit()
 
-    set_flash(request, "success", "Cloudflare configuration saved")
-    return RedirectResponse(url="/?tab=settings", status_code=303)
+    # Cached zone lookups would otherwise keep serving the previous zone.
+    cloudflare.invalidate_zone_cache()
+    return _redirect_with_flash(request, "success", "Cloudflare configuration saved")
 
 
 @router.post("/settings/crafty")
 async def save_crafty_settings(
     request: Request,
-    crafty_url: str = Form(...),
-    crafty_token: str = Form(...),
-    crafty_container_host: str = Form(None),
+    crafty_url: str = Form(""),
+    crafty_token: str = Form(""),
+    crafty_container_host: str = Form(""),
 ):
     user = current_user(request)
     if not user or not user_has_perm(user, "manage_settings"):
-        set_flash(request, "error", "Permission denied")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(request, "error", "Permission denied")
 
-    url = crafty_url.strip()
+    raw_url = crafty_url.strip()
+    url = normalize_base_url(raw_url) if raw_url else ""
+    if raw_url and not url:
+        return _redirect_with_flash(
+            request,
+            "error",
+            "Crafty URL must be a valid http:// or https:// URL without credentials",
+        )
+
     token = crafty_token.strip()
-    chost = crafty_container_host.strip() if crafty_container_host else ""
-
     with get_db() as con:
-        con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)", (url,))
-        # Blank field means "leave unchanged" — never overwrite an existing
-        # token with an empty string just because the form re-rendered it.
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)", (url,)
+        )
         if token:
-            con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_token',?)", (token,))
-        con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)", (chost,))
+            con.execute(
+                "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_token',?)",
+                (token,),
+            )
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)",
+            (crafty_container_host.strip(),),
+        )
         con.commit()
 
-    set_flash(request, "success", "Crafty configuration saved")
-    return RedirectResponse(url="/?tab=settings", status_code=303)
+    return _redirect_with_flash(request, "success", "Crafty configuration saved")
 
 
 @router.post("/settings/wizard")
@@ -125,28 +167,58 @@ async def save_wizard_settings(
 ):
     user = current_user(request)
     if not user or user.get("role") != "admin":
-        set_flash(request, "error", "Permission denied")
-        return RedirectResponse(url="/?tab=settings", status_code=303)
+        return _redirect_with_flash(request, "error", "Permission denied")
+
+    raw_url = crafty_url.strip()
+    url = normalize_base_url(raw_url) if raw_url else ""
+    if raw_url and not url:
+        return _redirect_with_flash(
+            request,
+            "error",
+            "Crafty URL must be a valid http:// or https:// URL without credentials",
+        )
 
     with get_db() as con:
         if not skip:
             if cf_token:
-                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_api_token',?)", (cf_token.strip(),))
+                con.execute(
+                    "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_api_token',?)",
+                    (cf_token.strip(),),
+                )
             if cf_zone:
                 zone = cf_zone.strip()
-                # Zone ID is 32 hex chars with no dots; otherwise treat as domain name
+                # A zone id is 32 hex characters with no dots; anything else is
+                # treated as a zone name.
                 if len(zone) == 32 and "." not in zone:
-                    con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_id',?)", (zone,))
+                    con.execute(
+                        "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_id',?)",
+                        (zone,),
+                    )
                 else:
-                    con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_name',?)", (zone,))
+                    con.execute(
+                        "INSERT OR REPLACE INTO settings (key,value) VALUES ('cf_zone_name',?)",
+                        (zone,),
+                    )
+            if url and crafty_token:
+                con.execute(
+                    "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)",
+                    (url,),
+                )
+                con.execute(
+                    "INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_token',?)",
+                    (crafty_token.strip(),),
+                )
+                con.execute(
+                    "INSERT OR REPLACE INTO settings (key,value) "
+                    "VALUES ('crafty_container_host',?)",
+                    ("",),
+                )
 
-            if crafty_url and crafty_token:
-                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_url',?)", (crafty_url.strip(),))
-                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_token',?)", (crafty_token.strip(),))
-                con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('crafty_container_host',?)", ("",))
-
-        con.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('setup_wizard_done',?)", ("1",))
+        con.execute(
+            "INSERT OR REPLACE INTO settings (key,value) VALUES ('setup_wizard_done',?)",
+            ("1",),
+        )
         con.commit()
 
-    set_flash(request, "success", "Setup completed")
-    return RedirectResponse(url="/", status_code=303)
+    cloudflare.invalidate_zone_cache()
+    return _redirect_with_flash(request, "success", "Setup completed", "/")

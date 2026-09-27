@@ -12,7 +12,7 @@ DB_PATH = Path(os.getenv("DB_PATH", "/data/mcrouter-ui.db"))
 # Admin credentials used only to bootstrap the first admin account.
 ADMIN_USER = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASSWORD", "changeme")
-DEFAULT_ADMIN_PASSWORD = "changeme"
+DEFAULT_ADMIN_PASSWORD = "changeme"  # noqa: S105 - documented insecure default, warned about at startup
 
 # mc-router API
 MC_ROUTER_API = os.getenv("MC_ROUTER_API", "http://localhost:8080")

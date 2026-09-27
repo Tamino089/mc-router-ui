@@ -51,7 +51,7 @@ async def sse_stream(request: Request):
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=30)
                     yield msg
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"
         finally:
             unsubscribe(queue)

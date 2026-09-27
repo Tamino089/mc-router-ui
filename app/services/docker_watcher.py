@@ -1,16 +1,12 @@
 """
-Docker socket integration — discovers mc-router routes from container labels.
+Docker socket integration that discovers routes from container labels.
 
-Reads mc-router.host labels from running containers and returns them as
-read-only route sources.  The Docker socket path is configured via the
-DOCKER_SOCKET env-var and is only activated when the socket file exists.
+Reads mc-router labels from running containers and returns them as read-only
+route sources. Only active when the configured Docker socket exists.
 """
 
 import asyncio
-import json
 import logging
-import os
-from typing import Optional
 
 import httpx
 
@@ -21,37 +17,39 @@ logger = logging.getLogger(__name__)
 DOCKER_LABEL_HOST = "mc-router.host"
 DOCKER_LABEL_EXTERNAL_SERVER = "mc-router.itzg.me/externalServerName"
 
-_RECENTLY_SEEN: set[str] = set()
 _cache: list[dict] = []
-_cache_ts: float = 0
+_cache_valid = False
+_cache_ts: float = 0.0
 _CACHE_TTL = 10.0
 
 
 async def _docker_request(method: str, path: str, **kwargs):
-    uds = httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds=str(DOCKER_SOCKET)), timeout=5)
+    client = httpx.AsyncClient(
+        transport=httpx.AsyncHTTPTransport(uds=str(DOCKER_SOCKET)), timeout=5
+    )
     try:
-        r = await getattr(uds, method)(f"http://localhost{path}", **kwargs)
-        r.raise_for_status()
-        return r.json(), None
+        response = await getattr(client, method)(f"http://localhost{path}", **kwargs)
+        response.raise_for_status()
+        return response.json(), None
     except Exception as e:
         return None, str(e)
     finally:
-        await uds.aclose()
+        await client.aclose()
 
 
 async def discover_docker_routes(force: bool = False) -> list[dict]:
-    """Query Docker for containers carrying mc-router labels.
+    """Return route dicts discovered from container labels.
 
-    Returns a list of route dicts with keys:
-      hostname, backend, source='docker', running, container_name
+    Each entry has hostname, backend, source='docker', running, container_name.
     """
-    global _cache, _cache_ts
+    global _cache, _cache_valid, _cache_ts
+
     now = asyncio.get_running_loop().time()
-    if not force and _cache and (now - _cache_ts) < _CACHE_TTL:
+    if not force and _cache_valid and (now - _cache_ts) < _CACHE_TTL:
         return _cache
 
     if not docker_enabled():
-        _cache = []
+        _cache, _cache_valid, _cache_ts = [], True, now
         return _cache
 
     data, err = await _docker_request("get", "/containers/json")
@@ -60,67 +58,61 @@ async def discover_docker_routes(force: bool = False) -> list[dict]:
         return []
 
     discovered = []
-    global _RECENTLY_SEEN
-    currently_seen = set()
-
-    for c in data:
-        names = c.get("Names", [])
-        labels = c.get("Labels", {}) or {}
-        state = c.get("State", "")
-        ports = c.get("Ports", [])
+    for container in data:
+        names = container.get("Names", [])
+        labels = container.get("Labels", {}) or {}
+        ports = container.get("Ports", [])
         container_name = (names[0] if names else "unknown").lstrip("/")
 
-        hostname = labels.get(DOCKER_LABEL_EXTERNAL_SERVER) or labels.get(DOCKER_LABEL_HOST) or ""
+        hostname = (
+            labels.get(DOCKER_LABEL_EXTERNAL_SERVER)
+            or labels.get(DOCKER_LABEL_HOST)
+            or ""
+        ).strip().lower()
         if not hostname:
             continue
 
-        hostname = hostname.strip().lower()
-        currently_seen.add(hostname)
-
-        # Determine backend from port mapping (first Minecraft port)
+        # First published TCP port wins; mc-router reaches it through the host.
         backend = ""
-        for p in ports:
-            private_port = p.get("PrivatePort")
-            ip = p.get("IP", "127.0.0.1")
-            if private_port and p.get("Type") == "tcp":
-                backend = f"{ip}:{private_port}"
+        for port in ports:
+            private_port = port.get("PrivatePort")
+            if private_port and port.get("Type") == "tcp":
+                backend = f"{port.get('IP', '127.0.0.1')}:{private_port}"
                 break
-        if not backend:
-            for p in ports:
-                private_port = p.get("PrivatePort")
-                if private_port and p.get("Type") == "tcp":
-                    backend = f"docker-host:{private_port}"
-                    break
 
         if not backend:
+            # No published port, so rely on the container name resolving on a
+            # shared Docker network.
             backend = f"{container_name}:25565"
             logger.warning(
-                "Container %s exposes no TCP port mapping — using fallback backend %s",
-                container_name, backend,
+                "Container %s exposes no TCP port; falling back to backend %s",
+                container_name,
+                backend,
             )
 
-        discovered.append({
-            "hostname": hostname,
-            "backend": backend,
-            "source": "docker",
-            "running": state == "running",
-            "container_name": container_name,
-        })
+        discovered.append(
+            {
+                "hostname": hostname,
+                "backend": backend,
+                "source": "docker",
+                "running": container.get("State", "") == "running",
+                "container_name": container_name,
+            }
+        )
 
-    _RECENTLY_SEEN = currently_seen
-    _cache = discovered
-    _cache_ts = now
+    # An empty result is cached too, so a Docker-less or failing host does not
+    # trigger a fresh socket round trip on every request.
+    _cache, _cache_valid, _cache_ts = discovered, True, now
     return discovered
 
 
 async def is_docker_managed(hostname: str) -> bool:
-    """Check if a hostname is managed by a Docker container label."""
     routes = await discover_docker_routes()
     return any(r["hostname"] == hostname for r in routes)
 
 
-async def docker_watcher_loop():
-    """Background loop that keeps the Docker route cache fresh."""
+async def docker_watcher_loop() -> None:
+    """Keep the Docker route cache fresh."""
     while True:
         try:
             await discover_docker_routes(force=True)

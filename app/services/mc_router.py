@@ -4,7 +4,6 @@ Async client for the mc-router REST API.
 
 import asyncio
 import logging
-from typing import Optional
 
 import httpx
 
@@ -36,7 +35,7 @@ async def router_request(method: str, path: str, retries: int = _MAX_RETRIES, **
     """
     url = MC_ROUTER_API.rstrip("/") + path
     headers = {**_HEADERS, **(kwargs.pop("headers", {}))}
-    last_err: Optional[BaseException] = None
+    last_err: BaseException | None = None
 
     for attempt in range(1, retries + 1):
         try:
@@ -76,7 +75,7 @@ async def router_request(method: str, path: str, retries: int = _MAX_RETRIES, **
 
 async def push_route(
     hostname: str, backend: str, retries: int = _MAX_RETRIES
-) -> Optional[str]:
+) -> str | None:
     """Register a hostname route. Returns an error string or None on success."""
     err = None
     for attempt in range(retries):
@@ -93,7 +92,7 @@ async def push_route(
     return err
 
 
-async def delete_route(hostname: str) -> Optional[str]:
+async def delete_route(hostname: str) -> str | None:
     _, err = await router_request("delete", f"/routes/{hostname}")
     # A missing route already matches the desired end state.
     if err and "404" in err:
@@ -101,7 +100,7 @@ async def delete_route(hostname: str) -> Optional[str]:
     return err
 
 
-async def push_default(backend: str, retries: int = _MAX_RETRIES) -> Optional[str]:
+async def push_default(backend: str, retries: int = _MAX_RETRIES) -> str | None:
     """Set the fallback backend used for unmatched hostnames."""
     err = None
     for attempt in range(retries):
@@ -115,7 +114,7 @@ async def push_default(backend: str, retries: int = _MAX_RETRIES) -> Optional[st
     return err
 
 
-async def clear_default() -> Optional[str]:
+async def clear_default() -> str | None:
     """Best-effort removal of the fallback backend.
 
     mc-router exposes no DELETE for the default route, so an empty backend is

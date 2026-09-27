@@ -12,7 +12,8 @@ async def build_routes_payload(user: dict, user_perms: set) -> list:
     with get_db() as con:
         if user["role"] == "admin" or "see_all_routes" in user_perms:
             db_routes = con.execute(
-                """SELECT r.*, u.username as owner_name, h.healthy, h.latency_ms, h.error as health_error
+                """SELECT r.*, u.username as owner_name,
+                          h.healthy, h.latency_ms, h.error as health_error
                    FROM routes r
                    LEFT JOIN users u ON r.owner_id = u.id
                    LEFT JOIN health_checks h ON r.id = h.route_id
@@ -20,7 +21,8 @@ async def build_routes_payload(user: dict, user_perms: set) -> list:
             ).fetchall()
         elif "see_own_routes" in user_perms:
             db_routes = con.execute(
-                """SELECT r.*, u.username as owner_name, h.healthy, h.latency_ms, h.error as health_error
+                """SELECT r.*, u.username as owner_name,
+                          h.healthy, h.latency_ms, h.error as health_error
                    FROM routes r
                    LEFT JOIN users u ON r.owner_id = u.id
                    LEFT JOIN health_checks h ON r.id = h.route_id

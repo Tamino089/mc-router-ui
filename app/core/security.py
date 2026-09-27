@@ -2,53 +2,56 @@
 Password hashing, verification, and session helpers.
 """
 
-import os
 import base64
 import hashlib
+import os
 import secrets
 
 from fastapi import Request
 
+PBKDF2_ITERATIONS = 100_000
 
-# ── Password hashing (pbkdf2_sha256) ─────────────────────────────────────────
 
 def hash_password(password: str) -> str:
+    """Hash a password with PBKDF2-SHA256 and a random salt."""
     salt = os.urandom(16)
     pwdhash = hashlib.pbkdf2_hmac(
-        "sha256", password.encode("utf-8"), salt, 100_000
+        "sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS
     )
     return (
-        f"pbkdf2_sha256$100000$"
+        f"pbkdf2_sha256${PBKDF2_ITERATIONS}$"
         f"{base64.b64encode(salt).decode('utf-8')}$"
         f"{base64.b64encode(pwdhash).decode('utf-8')}"
     )
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    """Check a password against a stored hash. Never raises."""
     try:
         parts = hashed.split("$")
         if len(parts) != 4 or parts[0] != "pbkdf2_sha256":
             return False
         iterations = int(parts[1])
         salt = base64.b64decode(parts[2].encode("utf-8"))
-        pwdhash = base64.b64decode(parts[3].encode("utf-8"))
-        new_hash = hashlib.pbkdf2_hmac(
+        expected = base64.b64decode(parts[3].encode("utf-8"))
+        candidate = hashlib.pbkdf2_hmac(
             "sha256", password.encode("utf-8"), salt, iterations
         )
-        return secrets.compare_digest(new_hash, pwdhash)
+        return secrets.compare_digest(candidate, expected)
     except Exception:
         return False
 
 
-# ── Session helpers ───────────────────────────────────────────────────────────
-
 def current_user(request: Request) -> dict | None:
+    """Return the session user, re-validated against the database.
+
+    The signed cookie proves continuity, but the database stays authoritative for
+    whether the account still exists and which role it holds now.
+    """
     session_user = request.session.get("user")
     if not isinstance(session_user, dict) or not session_user.get("id"):
         return None
 
-    # Session cookies prove continuity, but the database remains authoritative
-    # for whether the account still exists and which role it currently has.
     from app.db.database import get_db
 
     with get_db() as con:
@@ -65,3 +68,4 @@ def current_user(request: Request) -> dict | None:
     if user != session_user:
         request.session["user"] = user
     return user
+

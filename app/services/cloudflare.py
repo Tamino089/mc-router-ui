@@ -5,8 +5,6 @@ Cloudflare DDNS integration — DNS record management and IP sync loop.
 import asyncio
 import logging
 import os
-import sqlite3
-from typing import Optional
 
 import httpx
 
@@ -15,22 +13,33 @@ from app.db.database import get_db
 
 logger = logging.getLogger(__name__)
 
-# ── Module-level caches ──────────────────────────────────────────────────────
-_cf_zone_id_cache: Optional[str] = config.CF_ZONE_ID or None
-_cf_zone_name_cache: Optional[str] = config.CF_ZONE_NAME or None
+# Cached zone identifiers, reset whenever the settings are saved.
+_cf_zone_id_cache: str | None = config.CF_ZONE_ID or None
+_cf_zone_name_cache: str | None = config.CF_ZONE_NAME or None
+
+
+def invalidate_zone_cache() -> None:
+    """Drop cached zone state so saved zone settings take effect immediately."""
+    global _cf_zone_id_cache, _cf_zone_name_cache
+    _cf_zone_id_cache = config.CF_ZONE_ID or None
+    _cf_zone_name_cache = config.CF_ZONE_NAME or None
 
 
 def get_cf_config():
-    """Retrieve Cloudflare config from DB (fallback to ENV)."""
+    """Return (token, zone_id, zone_name) from stored settings, then the environment.
+
+    An empty stored value falls through to the environment rather than shadowing
+    it, so saving a blank field cannot silently disable an env-configured setup.
+    """
     with get_db() as con:
         t_row = con.execute("SELECT value FROM settings WHERE key='cf_api_token'").fetchone()
         z_row = con.execute("SELECT value FROM settings WHERE key='cf_zone_id'").fetchone()
         zn_row = con.execute("SELECT value FROM settings WHERE key='cf_zone_name'").fetchone()
-        
-    token = t_row[0] if t_row else config.CF_API_TOKEN
-    zid = z_row[0] if z_row else config.CF_ZONE_ID
-    zname = zn_row[0] if zn_row else config.CF_ZONE_NAME
-    return token, zid, zname
+
+    token = (t_row[0] if t_row else "") or config.CF_API_TOKEN
+    zone_id = (z_row[0] if z_row else "") or config.CF_ZONE_ID
+    zone_name = (zn_row[0] if zn_row else "") or config.CF_ZONE_NAME
+    return token, zone_id, zone_name
 
 
 async def cf_request(method: str, path: str, **kwargs):
@@ -74,7 +83,7 @@ async def cf_get_zone_id():
     return results[0]["id"], None
 
 
-async def get_public_ip() -> Optional[str]:
+async def get_public_ip() -> str | None:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get("https://api.ipify.org?format=json")
@@ -95,7 +104,7 @@ async def cf_find_record(zone_id: str, hostname: str):
     return (results[0] if results else None), None
 
 
-async def cf_upsert_a_record(hostname: str, ip: str) -> Optional[str]:
+async def cf_upsert_a_record(hostname: str, ip: str) -> str | None:
     """Create or update a DNS-only (unproxied) A-record."""
     token, _, _ = get_cf_config()
     if not token:
@@ -120,7 +129,7 @@ async def cf_upsert_a_record(hostname: str, ip: str) -> Optional[str]:
     return err
 
 
-async def cf_delete_record_by_hostname(hostname: str) -> Optional[str]:
+async def cf_delete_record_by_hostname(hostname: str) -> str | None:
     token, _, _ = get_cf_config()
     if not token:
         return None
@@ -138,7 +147,7 @@ async def cf_delete_record_by_hostname(hostname: str) -> Optional[str]:
     return err
 
 
-async def cf_delete_record_by_id(record_id: str) -> Optional[str]:
+async def cf_delete_record_by_id(record_id: str) -> str | None:
     token, _, _ = get_cf_config()
     if not token:
         return None
@@ -151,7 +160,7 @@ async def cf_delete_record_by_id(record_id: str) -> Optional[str]:
     return err
 
 
-async def sync_dns_for_route(hostname: str, is_default: bool) -> Optional[str]:
+async def sync_dns_for_route(hostname: str, is_default: bool) -> str | None:
     token, _, _ = get_cf_config()
     if not token:
         return "Cloudflare not configured — DNS record not created"
@@ -163,7 +172,7 @@ async def sync_dns_for_route(hostname: str, is_default: bool) -> Optional[str]:
     return await cf_upsert_a_record(hostname, ip)
 
 
-async def get_zone_name_domain() -> Optional[str]:
+async def get_zone_name_domain() -> str | None:
     """Resolve the zone name (used for domain validation)."""
     global _cf_zone_name_cache
     if _cf_zone_name_cache:
@@ -184,7 +193,7 @@ async def get_zone_name_domain() -> Optional[str]:
                 _cf_zone_name_cache = row[0].strip().lower()
                 return _cf_zone_name_cache
     except Exception:
-        pass
+        logger.exception("Could not read cf_zone_name from settings")
 
     if config.CF_API_TOKEN and (config.CF_ZONE_ID or _cf_zone_id_cache):
         zone_id = config.CF_ZONE_ID or _cf_zone_id_cache
@@ -197,7 +206,7 @@ async def get_zone_name_domain() -> Optional[str]:
     return None
 
 
-async def resolve_hostname(hostname: str) -> Optional[str]:
+async def resolve_hostname(hostname: str) -> str | None:
     """If hostname is just a subdomain (no dots), append the zone domain.
 
     Returns None if the hostname is a bare subdomain but no zone is configured.
@@ -213,7 +222,7 @@ async def resolve_hostname(hostname: str) -> Optional[str]:
 
 async def validate_domain(
     hostname: str, is_default: bool
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     if is_default or hostname == "__default__":
         return True, None
     zone = await get_zone_name_domain()
@@ -231,13 +240,13 @@ async def validate_domain(
     return True, None
 
 
-async def ddns_loop():
-    """Background loop that syncs DNS records when the public IP changes."""
+async def ddns_loop() -> None:
+    """Sync DNS records whenever the public IP changes."""
     consecutive_errors = 0
     while True:
         try:
-            token, zid, zname = get_cf_config()
-            if token and (zid or zname):
+            token, zone_id, zone_name = get_cf_config()
+            if token and (zone_id or zone_name):
                 ip = await get_public_ip()
                 if ip:
                     with get_db() as con:
@@ -245,29 +254,27 @@ async def ddns_loop():
                             "SELECT value FROM settings WHERE key='last_public_ip'"
                         ).fetchone()
                         last_ip = last_row["value"] if last_row else None
-                        if ip != last_ip:
-                            logger.info(
-                                "Public IP changed: %s -> %s, updating DNS records",
-                                last_ip,
-                                ip,
-                            )
-                            rows = con.execute(
-                                "SELECT hostname, is_default FROM routes"
-                            ).fetchall()
-                            for row in rows:
-                                if (
-                                    row["is_default"]
-                                    or not row["hostname"]
-                                    or row["hostname"] == "__default__"
-                                ):
-                                    continue
-                                err = await cf_upsert_a_record(row["hostname"], ip)
-                                if err:
-                                    logger.warning(
-                                        "DNS update failed for %s: %s",
-                                        row["hostname"],
-                                        err,
-                                    )
+                        rows = con.execute(
+                            "SELECT hostname, is_default FROM routes"
+                        ).fetchall()
+
+                    if ip != last_ip:
+                        logger.info("Public IP changed: %s -> %s", last_ip, ip)
+                        hostnames = [
+                            row["hostname"]
+                            for row in rows
+                            if row["hostname"]
+                            and not row["is_default"]
+                            and row["hostname"] != "__default__"
+                        ]
+                        for hostname in hostnames:
+                            err = await cf_upsert_a_record(hostname, ip)
+                            if err:
+                                logger.warning("DNS update failed for %s: %s", hostname, err)
+
+                        # Reopen the connection so the awaits above are not run
+                        # while holding a read snapshot.
+                        with get_db() as con:
                             con.execute(
                                 "INSERT OR REPLACE INTO settings (key,value) "
                                 "VALUES ('last_public_ip',?)",

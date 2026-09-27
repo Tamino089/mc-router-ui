@@ -13,9 +13,6 @@ from app.core.csrf import SameOriginCsrfMiddleware, SecurityHeadersMiddleware
 from app.core.security import current_user
 from app.db import schema
 from app.db.database import get_db
-from app.services import cloudflare, docker_watcher, health, mc_router
-from app.services.routes_data import build_routes_payload
-from app.services.sse import sse_emitter_loop
 from app.routes import (
     auth,
     cloudflare_api,
@@ -28,6 +25,9 @@ from app.routes import (
     settings,
     users,
 )
+from app.services import cloudflare, docker_watcher, health, mc_router
+from app.services.routes_data import build_routes_payload
+from app.services.sse import sse_emitter_loop
 
 logging.basicConfig(
     level=config.log_level(),
@@ -146,9 +146,11 @@ async def dashboard(request: Request):
         cf_z = con.execute("SELECT value FROM settings WHERE key='cf_zone_id'").fetchone()
         cf_zn = con.execute("SELECT value FROM settings WHERE key='cf_zone_name'").fetchone()
 
-        cf_token = cf_t[0] if cf_t else config.CF_API_TOKEN
-        cf_zid = cf_z[0] if cf_z else config.CF_ZONE_ID
-        cf_zname = cf_zn[0] if cf_zn else config.CF_ZONE_NAME
+        # Empty stored values fall through to the environment so a blank field
+        # saved in Settings cannot shadow an env-configured deployment.
+        cf_token = (cf_t[0] if cf_t else "") or config.CF_API_TOKEN
+        cf_zid = (cf_z[0] if cf_z else "") or config.CF_ZONE_ID
+        cf_zname = (cf_zn[0] if cf_zn else "") or config.CF_ZONE_NAME
         cf_enabled = bool(cf_token and (cf_zid or cf_zname))
 
         # Only handlers holding the matching manage_* permission receive the raw

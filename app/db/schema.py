@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Marker set while the bootstrap admin still uses ADMIN_PASSWORD unchanged, so
 # the UI can nag until a real password is chosen.
-DEFAULT_PASSWORD_SETTING = "admin_password_is_default"
+DEFAULT_PASSWORD_SETTING = "admin_password_is_default"  # noqa: S105 - settings key, not a credential
 
 
 def init_db() -> str:
@@ -158,7 +158,7 @@ def init_db() -> str:
             (config.ADMIN_USER.lower(), hash_password(password)),
         )
         con.execute("DELETE FROM settings WHERE key='admin_password'")
-        if password == "changeme":
+        if password == "changeme":  # noqa: S105 - detecting the insecure default
             con.execute(
                 "INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')",
                 (DEFAULT_PASSWORD_SETTING,),

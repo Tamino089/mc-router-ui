@@ -16,6 +16,16 @@ from app.services.health import tcp_check
 router = APIRouter()
 
 
+def _as_port(value) -> int | None:
+    """Coerce an upstream port value, ignoring anything non-numeric."""
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return None
+    return port if 1 <= port <= 65535 else None
+
+
+
 def _visible_route(request: Request, route_id: int):
     """Return a route only when the current user may inspect it."""
     user = current_user(request)
@@ -31,9 +41,13 @@ def _visible_route(request: Request, route_id: int):
     if not route:
         return None, JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
     perms = user_has_perm_set(user)
-    if user.get("role") != "admin" and "see_all_routes" not in perms:
-        if "see_own_routes" not in perms or route["owner_id"] != user["id"]:
-            return None, JSONResponse({"success": False, "error": "Forbidden"}, status_code=403)
+    if (
+        user.get("role") != "admin"
+        and "see_all_routes" not in perms
+        and ("see_own_routes" not in perms or route["owner_id"] != user["id"])
+    ):
+        return None, JSONResponse({"success": False, "error": "Forbidden"}, status_code=403)
+
     return route, None
 
 
@@ -141,35 +155,32 @@ async def get_used_ports(request: Request):
     # If the user has permission, add crafty ports
     if user.get("role") == "admin" or user_has_perm(user, "see_servers"):
         data, err = await crafty.crafty_request("get", "/servers")
-        if not err and data:
+        if not err and isinstance(data, list):
             for s in data:
-                p = s.get("server_port")
-                if p:
-                    used.append(int(p))
+                port = _as_port(s.get("server_port") if isinstance(s, dict) else None)
+                if port is not None:
+                    used.append(port)
 
     return {"success": True, "used_ports": list(set(used))}
 
+
 @router.get("/api/health/{route_id}/history")
 async def get_route_health_history(request: Request, route_id: int):
-    """Get the last 60 health check records (up to 30 mins) for a sparkline."""
+    """Return the most recent health records for a sparkline, oldest first."""
     _, error = _visible_route(request, route_id)
     if error:
         return error
 
     with get_db() as con:
-        # Get the last 60 records for this route, order chronologically
+        # checked_at has one-second resolution, so order by the row id to keep
+        # records written within the same second deterministic.
         rows = con.execute(
-            """SELECT healthy, latency_ms, checked_at 
-               FROM health_history 
-               WHERE route_id=? 
-               ORDER BY checked_at DESC LIMIT 60""",
-            (route_id,)
+            """SELECT healthy, latency_ms, checked_at
+               FROM health_history
+               WHERE route_id=?
+               ORDER BY id DESC LIMIT 60""",
+            (route_id,),
         ).fetchall()
-        
-    # Reverse so oldest is first
-    rows.reverse()
-    
-    return {
-        "success": True, 
-        "history": [dict(r) for r in rows]
-    }
+
+    return {"success": True, "history": [dict(r) for r in reversed(rows)]}
+

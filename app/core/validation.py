@@ -1,47 +1,39 @@
 """
-Shared validation patterns for hostnames, backends, and IP:PORT addresses.
+Validation patterns for hostnames, backends, and service URLs.
 
-Kept in its own module so route handlers and API endpoints use identical
-rules instead of re-importing from ``app.routes.routes`` (which caused a
-module importing itself).
+Shared so that route handlers and API endpoints apply identical rules.
 """
 
 import re
+from urllib.parse import urlsplit
 
-# ── Strict validation patterns ────────────────────────────────────────────────
 HOSTNAME_RE = re.compile(
-    r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+    r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
 )
-SOCKET_ADDR_RE = re.compile(
-    r'^[a-zA-Z0-9._-]+:[0-9]{1,5}$'
-)
-IP_PORT_RE = re.compile(
-    r'^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$'
-)
-BARE_ADDR_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
+SOCKET_ADDR_RE = re.compile(r"^[a-zA-Z0-9._-]+:[0-9]{1,5}$")
+IP_PORT_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}:\d{1,5}$")
+BARE_ADDR_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
-# mc-router and the health checker both default to 25565 when no port is given.
+# mc-router and the health checker both use this when no port is given.
 DEFAULT_MINECRAFT_PORT = 25565
 
 
-def valid_ip_port(s: str) -> bool:
+def valid_ip_port(value: str) -> bool:
     """Validate IP:PORT with proper octet ranges (0-255 each)."""
-    m = IP_PORT_RE.match(s)
-    if not m:
+    if not IP_PORT_RE.match(value):
         return False
-    ip_part, port_part = s.rsplit(":", 1)
+    ip_part, port_part = value.rsplit(":", 1)
     try:
         octets = [int(o) for o in ip_part.split(".")]
         if any(o < 0 or o > 255 for o in octets):
             return False
-        port = int(port_part)
-        return 1 <= port <= 65535
+        return 1 <= int(port_part) <= 65535
     except ValueError:
         return False
 
 
 def is_valid_backend(backend: str) -> bool:
-    """Accept HOST:PORT, IP:PORT, or a bare hostname/IP (port defaults later)."""
+    """Accept HOST:PORT, IP:PORT, or a bare hostname or IP."""
     if not backend:
         return False
     if SOCKET_ADDR_RE.match(backend) or valid_ip_port(backend):
@@ -50,7 +42,7 @@ def is_valid_backend(backend: str) -> bool:
 
 
 def normalize_backend(backend: str) -> str:
-    """Return a backend with an explicit port; bare addresses get :25565."""
+    """Return a backend with an explicit port, defaulting to 25565."""
     if not backend:
         return backend
     if ":" in backend:
@@ -62,5 +54,25 @@ def parse_backend(backend: str) -> tuple[str, int]:
     """Split a backend into (host, port), defaulting the port to 25565."""
     parts = backend.rsplit(":", 1)
     host = parts[0]
-    port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else DEFAULT_MINECRAFT_PORT
+    port = (
+        int(parts[1])
+        if len(parts) == 2 and parts[1].isdigit()
+        else DEFAULT_MINECRAFT_PORT
+    )
     return host, port
+
+
+def normalize_base_url(url: str) -> str | None:
+    """Validate an http(s) base URL, rejecting other schemes and credentials.
+
+    Used for the configured Crafty endpoint, which the server later fetches.
+    """
+    candidate = (url or "").strip().rstrip("/")
+    if not candidate:
+        return None
+    parts = urlsplit(candidate)
+    if parts.scheme not in ("http", "https"):
+        return None
+    if not parts.hostname or parts.username or parts.password:
+        return None
+    return candidate

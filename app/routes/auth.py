@@ -1,7 +1,8 @@
 """
-Authentication routes (Login/Logout).
+Authentication routes.
 """
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Form, Request
@@ -17,16 +18,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
-# ── Lightweight in-memory brute-force throttle ───────────────────────────────
-# Not a substitute for a proper rate-limiter (e.g. Redis-backed) behind a
-# multi-worker deployment, but this app is a single-process self-hosted
-# service, so an in-memory counter per client IP is enough to make credential
-# stuffing/brute-force meaningfully slower without adding a dependency.
+# Per-IP throttle that makes credential stuffing meaningfully slower. Adequate
+# for this single-process service; a multi-worker deployment would need a shared
+# store instead.
 login_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def _render_login(request: Request, error: str, status_code: int, username: str = ""):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": error, "last_username": username},
+        status_code=status_code,
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -37,14 +44,17 @@ async def login_form(request: Request):
 
 
 @router.post("/login")
-async def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+async def login_post(
+    request: Request, username: str = Form(...), password: str = Form(...)
+):
     ip = _client_ip(request)
     if await login_limiter.is_limited(ip):
         logger.warning("Login rate limit hit for %s", ip)
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Too many attempts. Please wait a minute and try again."},
-            status_code=429,
+        return _render_login(
+            request,
+            "Too many attempts. Please wait a minute and try again.",
+            429,
+            username,
         )
     await login_limiter.record(ip)
 
@@ -53,9 +63,14 @@ async def login_post(request: Request, username: str = Form(...), password: str 
             "SELECT * FROM users WHERE LOWER(username)=LOWER(?)", (username,)
         ).fetchone()
 
-    if user_row and verify_password(password, user_row["password_hash"]):
-        # Session regeneration prevents session-fixation attacks: discard any
-        # session state set before login and issue a fresh signed cookie.
+    # PBKDF2 is deliberately CPU-heavy, so keep it off the event loop.
+    authenticated = user_row and await asyncio.to_thread(
+        verify_password, password, user_row["password_hash"]
+    )
+
+    if authenticated:
+        # Clear any pre-login session state so a fixed session id cannot be
+        # reused after authentication.
         request.session.clear()
         request.session["user"] = {
             "id": user_row["id"],
@@ -64,11 +79,7 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         }
         return RedirectResponse(url="/", status_code=303)
 
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request, "error": "Invalid username or password."},
-        status_code=401,
-    )
+    return _render_login(request, "Invalid username or password.", 401, username)
 
 
 @router.post("/logout")

@@ -6,27 +6,24 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
-from app.core.config import DB_PATH
 from app.db.database import get_db
 
 logger = logging.getLogger(__name__)
 
-"""
-Crafty is commonly self-hosted with a self-signed cert on the local
-network. Disabling TLS verification unconditionally would silently accept
-ANY certificate for ANY crafty_url an admin ever configures, which is a
-real MITM risk if the URL ever points somewhere off the local network.
-Require an explicit opt-in instead of defaulting to insecure.
-"""
-CRAFTY_VERIFY_TLS = os.getenv("CRAFTY_INSECURE_SKIP_VERIFY", "").lower() not in ("1", "true", "yes")
+# Disabling TLS verification globally would accept any certificate for any
+# Crafty URL an admin configures, so it requires an explicit opt-in.
+CRAFTY_VERIFY_TLS = os.getenv("CRAFTY_INSECURE_SKIP_VERIFY", "").lower() not in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 async def crafty_request(method: str, path: str, **kwargs):
-    """Generic Crafty Controller API call."""
+    """Call the Crafty Controller API. Returns (data, error_string)."""
     with get_db() as con:
         url_row = con.execute(
             "SELECT value FROM settings WHERE key='crafty_url'"
@@ -42,25 +39,18 @@ async def crafty_request(method: str, path: str, **kwargs):
     if "/api/v2" in crafty_url:
         crafty_url = re.sub(r"/api/v2/?$", "", crafty_url)
 
-    crafty_token = token_row[0].strip()
-
     headers = {
-        "Authorization": f"Bearer {crafty_token}",
+        "Authorization": f"Bearer {token_row[0].strip()}",
         "Content-Type": "application/json",
     }
-
     url = f"{crafty_url}/api/v2{path}"
-
-    # Note: deliberately no token in this log line — even a masked
-    # first4...last4 prefix/suffix of the secret is useful to an attacker.
-    logger.info("[Crafty Request] %s %s", method.upper(), url)
+    logger.info("Crafty request: %s %s", method.upper(), url)
 
     try:
         async with httpx.AsyncClient(verify=CRAFTY_VERIFY_TLS, timeout=10) as client:
             r = await getattr(client, method)(url, headers=headers, **kwargs)
             logger.info(
-                "[Crafty Response] %s %s -> HTTP %d",
-                method.upper(), url, r.status_code,
+                "Crafty response: %s %s -> HTTP %d", method.upper(), url, r.status_code
             )
 
             try:
@@ -78,8 +68,11 @@ async def crafty_request(method: str, path: str, **kwargs):
                     err_detail = r.text[:500]
 
                 logger.error(
-                    "[Crafty API Error] HTTP %d for %s %s: %s",
-                    r.status_code, method.upper(), url, err_detail,
+                    "Crafty API error HTTP %d for %s %s: %s",
+                    r.status_code,
+                    method.upper(),
+                    url,
+                    err_detail,
                 )
                 status_map = {
                     401: "Crafty API error (401 Unauthorized): Invalid API token.",
@@ -96,26 +89,36 @@ async def crafty_request(method: str, path: str, **kwargs):
             except ValueError:
                 return None, f"Crafty API error (invalid JSON): {r.text[:200]}"
 
-            if data and data.get("status") in ("error",):
-                return None, f"Crafty API error: {data.get('error', data.get('detail', 'Unknown error'))}"
-            if isinstance(data, dict) and "data" in data:
-                return data["data"], None
-            if isinstance(data, dict) and "status" not in data:
-                return data, None
-            return (data or {}).get("data") or data, None
+            if isinstance(data, dict):
+                if data.get("status") == "error":
+                    return None, (
+                        "Crafty API error: "
+                        f"{data.get('error', data.get('detail', 'Unknown error'))}"
+                    )
+                if "data" in data:
+                    return data["data"], None
+                if "status" not in data:
+                    return data, None
+                return data.get("data") or data, None
+
+            # A bare list or scalar is passed through unchanged.
+            return data, None
 
     except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-        logger.error("[Crafty Connection Error] %s for %s %s: %s", type(e).__name__, method.upper(), url, e)
-        err_text = str(e)
-        # httpx wraps SSL certificate failures inside ConnectError. Self-hosted
-        # Crafty almost always runs on a self-signed cert, so this is the most
-        # common real cause of "Crafty won't connect" — surface it distinctly
-        # instead of a generic "host unreachable", which sends people chasing
-        # the wrong problem (firewall/network) instead of the actual fix.
-        if "CERTIFICATE_VERIFY_FAILED" in err_text or "certificate verify failed" in err_text.lower():
+        logger.error(
+            "Crafty connection error %s for %s %s: %s",
+            type(e).__name__,
+            method.upper(),
+            url,
+            e,
+        )
+        # httpx reports certificate failures as ConnectError, and a self-signed
+        # certificate is the usual cause for self-hosted Crafty. Name it so the
+        # fix is obvious rather than implying a network problem.
+        if "certificate" in str(e).lower():
             return None, (
                 "Crafty connection error: TLS certificate verification failed. "
-                "Self-hosted Crafty commonly uses a self-signed certificate — "
+                "Self-hosted Crafty commonly uses a self-signed certificate - "
                 "set CRAFTY_INSECURE_SKIP_VERIFY=true if you trust this host, "
                 "or install a valid certificate on Crafty."
             )
@@ -123,117 +126,95 @@ async def crafty_request(method: str, path: str, **kwargs):
     except httpx.TimeoutException as e:
         return None, f"Crafty connection error: Timeout ({e})"
     except Exception as e:
-        logger.exception("[Crafty Unexpected Error] %s %s", method.upper(), url)
+        logger.exception("Crafty unexpected error %s %s", method.upper(), url)
         return None, f"Crafty connection error: {e}"
 
 
-# ── server.properties management ──────────────────────────────────────────────
+_prop_path_cache: dict[str, Path | None] = {}
 
-_prop_path_cache: dict[str, Optional[Path]] = {}
+_CANDIDATE_DIRS = (
+    Path("/crafty/servers"),
+    Path("/var/opt/crafty/servers"),
+    Path("/app/crafty/servers"),
+    Path("/data/crafty/servers"),
+    Path("/data/servers"),
+)
+
+
+def _find_properties_in(directory: Path) -> Path | None:
+    direct = directory / "server.properties"
+    if direct.exists():
+        return direct
+    try:
+        for found in directory.rglob("server.properties"):
+            if found.is_file():
+                return found
+    except OSError as e:
+        logger.warning("Error searching %s: %s", directory, e)
+    return None
 
 
 def get_server_properties_path(
-    server_id: str, server_name: str = None
-) -> Optional[Path]:
-    """Locate server.properties for a given server ID or name.
+    server_id: str, server_name: str | None = None
+) -> Path | None:
+    """Locate server.properties for a server id or name.
 
-    Positive results are cached in-memory keyed by server_id to avoid
-    repeated filesystem globbing on every port-change request.
-    Negative results (None) are NOT cached so that fixing a volume
-    mount takes effect without a container restart.
+    Successful lookups are cached per server id; misses are not, so fixing a
+    volume mount takes effect without a restart.
     """
-    if server_id in _prop_path_cache and _prop_path_cache[server_id] is not None:
-        cached = _prop_path_cache[server_id]
-        logger.debug("get_server_properties_path: cache hit for %s -> %s", server_id, cached)
+    cached = _prop_path_cache.get(server_id)
+    if cached is not None:
         return cached
 
-    candidate_dirs = [
-        Path("/crafty/servers"),
-        Path("/var/opt/crafty/servers"),
-        Path("/app/crafty/servers"),
-        Path("/data/crafty/servers"),
-        Path("/data/servers"),
-    ]
+    candidate_dirs = list(_CANDIDATE_DIRS)
     env_base = os.getenv("CRAFTY_SERVERS_DIR", "").strip()
     if env_base:
         candidate_dirs.insert(0, Path(env_base))
 
-    logger.info(
-        "get_server_properties_path: searching for server '%s' (name='%s') in %d candidate dirs",
-        server_id, server_name, len(candidate_dirs),
-    )
-
     for base_dir in candidate_dirs:
-        if not base_dir.exists() or not base_dir.is_dir():
-            logger.debug("get_server_properties_path: candidate dir %s does not exist, skipping", base_dir)
+        if not base_dir.is_dir():
             continue
-        logger.debug("get_server_properties_path: checking candidate dir %s", base_dir)
 
-        # 1. Direct subfolder check by server_id or server_name
         for folder_name in (server_id, server_name):
             if not folder_name:
                 continue
             target_dir = base_dir / folder_name
-            if target_dir.exists() and target_dir.is_dir():
-                logger.debug("get_server_properties_path: found matching subfolder %s", target_dir)
-                direct_prop = target_dir / "server.properties"
-                if direct_prop.exists():
-                    logger.info("get_server_properties_path: found %s (size=%d)", direct_prop, direct_prop.stat().st_size)
-                    _prop_path_cache[server_id] = direct_prop
-                    return direct_prop
-                try:
-                    for found in target_dir.rglob("server.properties"):
-                        if found.is_file():
-                            logger.info("get_server_properties_path: found via rglob %s (size=%d)", found, found.stat().st_size)
-                            _prop_path_cache[server_id] = found
-                            return found
-                except Exception as e:
-                    logger.warning("Error searching in %s: %s", target_dir, e)
-            else:
-                logger.debug("get_server_properties_path: subfolder %s not found in %s", folder_name, base_dir)
+            if target_dir.is_dir():
+                found = _find_properties_in(target_dir)
+                if found:
+                    _prop_path_cache[server_id] = found
+                    return found
 
-        # 2. Iterative search across all subdirectories of base_dir
-        logger.debug("get_server_properties_path: scanning all subdirs of %s for match", base_dir)
         try:
             for child in base_dir.iterdir():
-                if child.is_dir():
-                    child_name = child.name.lower()
-                    if (server_id and server_id.lower() in child_name) or (
-                        server_name and server_name.lower() in child_name
-                    ):
-                        logger.debug("get_server_properties_path: subdir %s matches (child_name=%s)", child, child_name)
-                        direct_prop = child / "server.properties"
-                        if direct_prop.exists():
-                            logger.info("get_server_properties_path: found %s (size=%d)", direct_prop, direct_prop.stat().st_size)
-                            _prop_path_cache[server_id] = direct_prop
-                            return direct_prop
-                        for found in child.rglob("server.properties"):
-                            if found.is_file():
-                                logger.info("get_server_properties_path: found via rglob %s (size=%d)", found, found.stat().st_size)
-                                _prop_path_cache[server_id] = found
-                                return found
-        except Exception as e:
-            logger.warning("Error scanning base directory %s: %s", base_dir, e)
+                if not child.is_dir():
+                    continue
+                child_name = child.name.lower()
+                if (server_id and server_id.lower() in child_name) or (
+                    server_name and server_name.lower() in child_name
+                ):
+                    found = _find_properties_in(child)
+                    if found:
+                        _prop_path_cache[server_id] = found
+                        return found
+        except OSError as e:
+            logger.warning("Error scanning %s: %s", base_dir, e)
 
-    # 3. Environmental fallback override
     env_exact = os.getenv("SERVER_PROPERTIES_PATH", "").strip()
-    if env_exact:
+    if env_exact and Path(env_exact).exists():
         path = Path(env_exact)
-        if path.exists():
-            logger.info("get_server_properties_path: found via SERVER_PROPERTIES_PATH %s", path)
-            _prop_path_cache[server_id] = path
-            return path
-        logger.debug("get_server_properties_path: SERVER_PROPERTIES_PATH=%s does not exist", env_exact)
+        _prop_path_cache[server_id] = path
+        return path
 
-    logger.warning("get_server_properties_path: no match found for server '%s'", server_id)
+    logger.warning("No server.properties found for server '%s'", server_id)
     return None
 
 
 def update_server_properties_port(file_path: Path, new_port: int) -> bool:
-    """Update server-port and query.port in server.properties."""
+    """Update server-port and query.port, writing atomically."""
     try:
         if not file_path.exists():
-            logger.error("update_server_properties_port: file not found at %s", file_path)
+            logger.error("server.properties not found at %s", file_path)
             return False
 
         content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -247,13 +228,11 @@ def update_server_properties_port(file_path: Path, new_port: int) -> bool:
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("server-port="):
-                old_val = line.split("=", 1)[1] if "=" in line else ""
-                old_server_port = old_val
+                old_server_port = line.split("=", 1)[1] if "=" in line else ""
                 new_lines.append(f"server-port={new_port}")
                 updated_server = True
             elif stripped.startswith("query.port="):
-                old_val = line.split("=", 1)[1] if "=" in line else ""
-                old_query_port = old_val
+                old_query_port = line.split("=", 1)[1] if "=" in line else ""
                 new_lines.append(f"query.port={new_port}")
                 updated_query = True
             else:
@@ -264,17 +243,21 @@ def update_server_properties_port(file_path: Path, new_port: int) -> bool:
         if not updated_query:
             new_lines.append(f"query.port={new_port}")
 
-        file_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        # Write to a sibling temp file and rename, so a crash mid-write cannot
+        # leave a live server with a truncated server.properties.
+        temp_path = file_path.with_name(f".{file_path.name}.tmp")
+        temp_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        os.replace(temp_path, file_path)
 
-        size_before = len(content.encode("utf-8"))
-        size_after = file_path.stat().st_size
         logger.info(
-            "update_server_properties_port: %s — server-port: %s→%d, query.port: %s→%d (size: %d→%d bytes)",
-            file_path, old_server_port or "(missing)", new_port,
-            old_query_port or "(missing)", new_port,
-            size_before, size_after,
+            "Updated %s: server-port %s -> %d, query.port %s -> %d",
+            file_path,
+            old_server_port or "(missing)",
+            new_port,
+            old_query_port or "(missing)",
+            new_port,
         )
         return True
     except Exception:
-        logger.exception("update_server_properties_port: failed for %s", file_path)
+        logger.exception("Failed to update %s", file_path)
         return False

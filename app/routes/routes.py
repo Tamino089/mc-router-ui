@@ -359,7 +359,12 @@ async def edit_route(request: Request, route_id: int):
         {"action": "edit", "route_id": route_id, "hostname": hostname},
     )
 
-    return JSONResponse({"success": True, "message": f"Route updated successfully{_dns_message(is_default, cf_err)}"})
+    return JSONResponse(
+        {
+            "success": True,
+            "message": f"Route updated successfully{_dns_message(is_default, cf_err)}",
+        }
+    )
 
 
 @router.post("/routes/delete/{route_id}")
