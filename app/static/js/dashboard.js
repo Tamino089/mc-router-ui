@@ -1,0 +1,1692 @@
+'use strict';
+
+const IS_ADMIN   = window.MC_UI_CONFIG?.isAdmin ?? false;
+const USER_ID    = window.MC_UI_CONFIG?.userId ?? 0;
+const USER_PERMS = new Set(window.MC_UI_CONFIG?.userPerms ?? []);
+const ALL_PERMS  = window.MC_UI_CONFIG?.allPerms ?? [];
+const CF_ENABLED = window.MC_UI_CONFIG?.cfEnabled ?? false;
+
+const PERM_LABELS = {
+  see_own_routes:    'View own routes',
+  see_all_routes:    'View all routes',
+  create_route:      'Create routes',
+  edit_own_route:    'Edit own routes',
+  delete_own_route:  'Delete own routes',
+  see_cloudflare:    'View Cloudflare DNS',
+  manage_cloudflare: 'Manage Cloudflare DNS',
+  see_servers:       'View Crafty servers',
+  manage_servers:    'Control Crafty servers',
+  see_all_users:     'View user list',
+  manage_users:      'Manage users',
+  manage_settings:   'Manage settings',
+};
+
+const FETCH_TIMEOUT_MS = 15000;
+
+async function apiFetch(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const abortErr = new Error('Request timed out');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function showToast(message, type = 'info', duration = 4000, retryFn = null) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const icons = { success: '✓', error: '⚠', info: 'ℹ' };
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+  const icon = document.createElement('span');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = icons[type] || 'ℹ';
+  const content = document.createElement('span');
+  content.textContent = String(message);
+  toast.append(icon, content);
+
+  const dismiss = () => {
+    toast.classList.add('toast-out');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  };
+
+  let timer = null;
+  if (type === 'error' && typeof retryFn === 'function') {
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'toast-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => {
+
+
+      clearTimeout(timer);
+      dismiss();
+      retryFn();
+    });
+    toast.appendChild(retryBtn);
+    duration = Math.max(duration, 8000);
+  }
+
+  container.appendChild(toast);
+  timer = setTimeout(dismiss, duration);
+}
+
+function skeletonRows(widths, columns) {
+  const rows = [];
+
+
+  const span = columns || widths.length;
+  for (let i = 0; i < 4; i++) {
+    const cells = widths.map(w => `<td><div class="skeleton-cell w${w}"></div></td>`).join('');
+    rows.push(`<tr class="skeleton-row"><td colspan="${span}" class="skeleton-span">${cells}</td></tr>`);
+  }
+  return rows.join('');
+}
+
+async function copyToClipboard(text, btn) {
+
+
+  const original = btn.innerHTML;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">' +
+      '<polyline points="20 6 9 17 4 12"/></svg>';
+    btn.style.color = 'var(--green)';
+    btn.setAttribute('aria-label', 'Copied');
+    setTimeout(() => {
+      btn.innerHTML = original;
+      btn.style.color = '';
+      btn.setAttribute('aria-label', 'Copy to clipboard');
+    }, 1500);
+  } catch {
+    showToast('Copy failed', 'error');
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+  const content = document.getElementById('tab-' + name);
+  const btn = document.getElementById('tab-btn-' + name);
+  if (content) content.classList.add('active');
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(tab => {
+    tab.setAttribute('aria-selected', tab === btn ? 'true' : 'false');
+    tab.setAttribute('tabindex', tab === btn ? '0' : '-1');
+  });
+
+
+  const mSel = document.getElementById('mobile-tab-select');
+  if (mSel) mSel.value = name;
+
+
+  if (name === 'routes') {
+    if (CF_ENABLED && (IS_ADMIN || USER_PERMS.has('see_cloudflare'))) loadCfRecords();
+    if (IS_ADMIN || USER_PERMS.has('see_servers')) loadCraftyServers();
+  }
+  if (name === 'settings') loadUsersList();
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    modalReturnFocus = document.activeElement;
+    activeModal = el;
+    el.classList.add('open');
+    trapFocus(el);
+  }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.remove('open');
+    if (activeModal === el) {
+      activeModal = null;
+      if (modalReturnFocus && typeof modalReturnFocus.focus === 'function') {
+        modalReturnFocus.focus();
+      }
+      modalReturnFocus = null;
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', e => {
+
+
+      if (e.target === o && o.id !== 'wizard-modal') closeModal(o.id);
+    });
+  });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => {
+      if (m.id !== 'wizard-modal') closeModal(m.id);
+    });
+  }
+  if (e.key === 'Tab' && activeModal) {
+    const focusable = [...activeModal.querySelectorAll(
+      'button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )].filter(el => !el.disabled);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+});
+
+function trapFocus(el) {
+  const focusable = el.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable.length) focusable[0].focus();
+}
+
+function toggleTheme() {
+  const current = document.documentElement.dataset.theme || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('mc-theme', next);
+}
+
+let craftyServers = [];
+let craftyContainerHost = '';
+let validationTimer = null;
+let currentValidation = null;
+let savedHostname = '';
+let activeModal = null;
+let modalReturnFocus = null;
+
+async function loadZones() {
+  const sel = document.getElementById('f-domain');
+  if (!sel) return;
+  try {
+    const r = await apiFetch('/api/cf/zones');
+    const d = await r.json();
+    sel.innerHTML = '<option value="">(enter full domain)</option>';
+    if (d.success && d.zones.length) {
+      d.zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.name;
+        opt.textContent = z.name;
+        sel.appendChild(opt);
+      });
+    }
+  } catch {
+    sel.innerHTML = '<option value="">(zones unavailable)</option>';
+    showToast('Could not load Cloudflare zones', 'error');
+  }
+}
+
+async function openRouteModal() {
+  document.getElementById('route-modal-title').textContent = 'Create Route';
+  document.getElementById('route-submit').textContent = 'Create Route';
+  document.getElementById('f-route-id').value = '';
+  document.getElementById('f-hostname').value = '';
+  document.getElementById('f-hostname').disabled = false;
+  document.getElementById('f-domain').value = '';
+  document.getElementById('f-backend').value = '';
+  setDefaultSelected(false);
+  savedHostname = '';
+  resetValidation();
+
+  openModal('route-modal');
+  setTimeout(() => document.getElementById('f-hostname').focus(), 100);
+
+
+  loadZones();
+
+
+  await loadCraftyBackendSelect();
+}
+
+async function openEditRouteModal(id, hostname, backend, isDefault) {
+  document.getElementById('route-modal-title').textContent = 'Edit Route';
+  document.getElementById('route-submit').textContent = 'Save Changes';
+  document.getElementById('f-route-id').value = id;
+  setDefaultSelected(isDefault);
+
+
+  await loadZones();
+
+  const displayHostname = (hostname === '__default__' || isDefault) ? '' : hostname;
+  const hostnameInput = document.getElementById('f-hostname');
+  const domainSel = document.getElementById('f-domain');
+
+  if (displayHostname && displayHostname.includes('.')) {
+    const parts = displayHostname.split('.');
+    const tld = parts.pop();
+    const sld = parts.pop();
+    const domain = sld + '.' + tld;
+
+    const opts = [...domainSel.options].map(o => o.value);
+    if (opts.includes(domain)) {
+      domainSel.value = domain;
+      hostnameInput.value = parts.join('.');
+    } else {
+      hostnameInput.value = displayHostname;
+    }
+  } else {
+    hostnameInput.value = displayHostname;
+  }
+  hostnameInput.disabled = isDefault;
+  savedHostname = displayHostname;
+
+  resetValidation();
+  openModal('route-modal');
+
+
+  await loadCraftyBackendSelect();
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (!sel.classList.contains('u-hidden')) {
+    sel.value = backend;
+
+    if (sel.value !== backend) {
+      sel.classList.add('u-hidden');
+      input.classList.remove('u-hidden');
+    }
+  }
+  input.value = backend;
+  triggerValidation();
+}
+
+function closeRouteModal() {
+  clearTimeout(validationTimer);
+  currentValidation = null;
+  closeModal('route-modal');
+}
+
+async function loadCraftyBackendSelect() {
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (!sel || !input) return;
+
+  if (!(IS_ADMIN || USER_PERMS.has('see_servers'))) return;
+
+  try {
+    const r = await apiFetch('/api/crafty/servers');
+    const d = await r.json();
+    if (!d.success || !d.servers.length) { craftyServers = []; return; }
+
+    craftyServers = d.servers;
+    const host = d.container_host || craftyContainerHost;
+    if (host) craftyContainerHost = host;
+
+    sel.innerHTML = '<option value="">Select a Crafty server…</option>';
+    d.servers.forEach(s => {
+      const addr = s.container_address || (host ? `${host}:${s.port}` : '');
+      if (!addr) return;
+      const opt = document.createElement('option');
+      opt.value = addr;
+      opt.textContent = `${s.name} (${addr})`;
+      if (!s.running) opt.textContent += ' — stopped';
+      sel.appendChild(opt);
+    });
+
+    sel.classList.remove('u-hidden');
+    input.classList.add('u-hidden');
+  } catch {
+    craftyServers = [];
+    sel.innerHTML = '<option value="">(Crafty servers unavailable)</option>';
+
+
+    sel.classList.add('u-hidden');
+    input.classList.remove('u-hidden');
+    showToast('Could not load Crafty servers', 'error');
+  }
+}
+
+function onCraftyBackendSelect() {
+  const sel = document.getElementById('f-backend-select');
+  const input = document.getElementById('f-backend');
+  if (sel.value) {
+    input.value = sel.value;
+  } else {
+    input.value = '';
+  }
+  triggerValidation();
+}
+
+function onDefaultToggle() {
+  const toggle = defaultToggleEl();
+  if (!toggle) return;
+  const checked = isDefaultSelected();
+  const hostnameInput = document.getElementById('f-hostname');
+  if (checked) {
+    savedHostname = hostnameInput.value;
+    hostnameInput.value = '';
+    hostnameInput.disabled = true;
+  } else {
+    hostnameInput.value = savedHostname;
+    hostnameInput.disabled = false;
+  }
+  triggerValidation();
+}
+
+function defaultToggleEl() {
+  return document.getElementById('f-is-default');
+}
+
+function isDefaultSelected() {
+  const el = defaultToggleEl();
+  return el ? el.checked : false;
+}
+
+function setDefaultSelected(value) {
+  const el = defaultToggleEl();
+  if (el) el.checked = !!value;
+}
+
+function getEffectiveHostname() {
+  const isDefault = isDefaultSelected();
+  if (isDefault) return '__default__';
+  const sub = document.getElementById('f-hostname').value.trim().toLowerCase();
+  const domain = document.getElementById('f-domain').value;
+  if (domain && sub && !sub.includes('.')) {
+    return sub + '.' + domain;
+  }
+  return sub;
+}
+
+function getEffectiveBackend() {
+  return document.getElementById('f-backend').value.trim();
+}
+
+function resetValidation() {
+  ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'validation-item val-neutral';
+    el.querySelector('.v-indicator').textContent = '?';
+    const detail = el.querySelector('.v-message');
+    if (detail) detail.textContent = '';
+  });
+  currentValidation = null;
+  const preview = document.getElementById('hostname-preview');
+  if (preview) preview.style.display = 'none';
+}
+
+function updateValidation(fieldId, status, message) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  el.className = `validation-item val-${status}`;
+  const indicator = el.querySelector('.v-indicator');
+  const icons = { checking: '', success: '✓', warning: '⚠', error: '✕' };
+  indicator.textContent = icons[status] ?? '?';
+  el.title = message;
+
+  const detail = el.querySelector('.v-message');
+  if (detail) detail.textContent = message || '';
+}
+
+async function performValidation() {
+  const modal = document.getElementById('route-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+
+  const routeId  = document.getElementById('f-route-id').value;
+  const hostname = getEffectiveHostname();
+  const backend  = getEffectiveBackend();
+  const isDefault = isDefaultSelected();
+  const domain = document.getElementById('f-domain').value;
+
+  ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'checking', 'Checking…'));
+
+  try {
+    let url = `/api/validate-route?hostname=${encodeURIComponent(hostname)}&backend=${encodeURIComponent(backend)}&is_default=${isDefault}`;
+    if (domain) url += `&domain=${encodeURIComponent(domain)}`;
+    if (routeId) url += `&route_id=${routeId}`;
+    const res = await apiFetch(url);
+    if (!res.ok) throw new Error();
+    const d = await res.json();
+    currentValidation = d;
+    updateValidation('val-format',  d['val-format'].status,   d['val-format'].message);
+    updateValidation('val-cf',      d['val-cf'].status,       d['val-cf'].message);
+    updateValidation('val-dns',     d['val-dns'].status,      d['val-dns'].message);
+    updateValidation('val-backend', d['val-backend'].status,  d['val-backend'].message);
+
+
+    const preview = document.getElementById('hostname-preview');
+    if (preview) {
+      if (d['val-resolved']) {
+        preview.textContent = d['val-resolved'];
+        preview.style.display = '';
+      } else {
+        preview.style.display = 'none';
+      }
+    }
+
+
+    if (d.zones && d.zones.length) {
+      const sel = document.getElementById('f-domain');
+      const curVal = sel.value;
+      sel.innerHTML = '<option value="">(enter full domain)</option>';
+      d.zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.name;
+        opt.textContent = z.name;
+        sel.appendChild(opt);
+      });
+      if (curVal) sel.value = curVal;
+    }
+  } catch {
+    ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'error', 'Validation failed.'));
+    const preview = document.getElementById('hostname-preview');
+    if (preview) preview.style.display = 'none';
+  }
+}
+
+function triggerValidation() {
+  clearTimeout(validationTimer);
+  validationTimer = setTimeout(performValidation, 150);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const routeForm = document.getElementById('route-form');
+  if (!routeForm) return;
+
+  routeForm.addEventListener('submit', e => {
+    e.preventDefault();
+    saveRoute();
+  });
+});
+
+async function saveRoute() {
+  const routeForm = document.getElementById('route-form');
+  const submitBtn = document.getElementById('route-submit');
+  if (!routeForm || !submitBtn) return;
+
+  const hostname  = getEffectiveHostname();
+  const backend   = getEffectiveBackend();
+  const isDefault = isDefaultSelected();
+
+
+  if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
+  if (!backend) { showToast('Backend server is required', 'error'); return; }
+
+
+  if (currentValidation) {
+    const errors = Object.values(currentValidation)
+      .filter(c => c.status === 'error')
+      .map(c => c.message);
+    if (errors.length) {
+      const proceed = confirm('Validation issues found:\n\n' + errors.join('\n') + '\n\nSave anyway?');
+      if (!proceed) return;
+    }
+  }
+
+  const routeId = document.getElementById('f-route-id').value;
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
+
+  try {
+    const url = routeId ? `/routes/edit/${routeId}` : '/routes/add';
+    const r = await apiFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hostname: hostname,
+        backend: backend,
+        is_default: isDefault ? true : false
+      })
+    });
+
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message || 'Route saved successfully', 'success');
+      if (d.warning) showToast(d.warning, 'info', 6000);
+      closeRouteModal();
+      await refreshRoutesTable();
+    } else {
+      showToast(d.error || 'Failed to save route', 'error', 4000, saveRoute);
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error', 4000, saveRoute);
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = routeId ? 'Save Changes' : 'Create Route';
+  }
+}
+
+let deleteRouteId = null;
+
+function confirmDeleteRoute(id, hostname) {
+  deleteRouteId = id;
+  document.getElementById('delete-route-text').textContent =
+    `Are you sure you want to delete the route for "${hostname === '__default__' ? '* (default)' : hostname}"? This action cannot be undone.`;
+  openModal('delete-route-modal');
+}
+
+async function submitDeleteRoute() {
+  if (!deleteRouteId) return;
+  const btn = document.getElementById('delete-route-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Deleting…';
+
+  try {
+    const r = await apiFetch(`/routes/delete/${deleteRouteId}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('delete-route-modal');
+      showToast(d.message || 'Route deleted', 'success');
+      await refreshRoutesTable();
+    } else {
+      showToast(d.error || 'Delete failed', 'error', 4000, submitDeleteRoute);
+      btn.disabled = false;
+      btn.innerHTML = 'Delete Route';
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error', 4000, submitDeleteRoute);
+    btn.disabled = false;
+    btn.innerHTML = 'Delete Route';
+  }
+}
+
+function routeRowHtml(r, index) {
+
+
+  const isDocker = r.id == null;
+  const rowId = isDocker ? `docker-${index}` : r.id;
+  const hostname = r.hostname === '__default__' ? '*' : r.hostname;
+  const isDefault = !!r.is_default;
+  const source = r.source || 'static';
+  const backend = r.backend || '';
+  const owner = esc(r.owner_name || '');
+  const healthy = isDocker ? null : r.healthy;
+
+  let healthDot = 'dot-gray';
+  let healthText = 'Not checked';
+  let healthTitle = '';
+  if (isDocker) {
+    healthText = 'Managed by Docker';
+  } else if (healthy === null || healthy === undefined) {
+    healthText = 'Not checked';
+  } else if (healthy) {
+    healthDot = 'dot-green';
+    healthText = 'Reachable';
+  } else {
+    healthDot = 'dot-red';
+    if (r.health_error) {
+      healthText = `Offline — ${esc(r.health_error)}`;
+      healthTitle = r.health_error;
+    } else {
+      healthText = 'Offline';
+    }
+  }
+  const healthTitleAttr = healthTitle ? ` title="${esc(healthTitle)}"` : '';
+
+  const sourceBadge = source === 'docker'
+    ? '<span class="badge badge-docker"><svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><circle cx="12" cy="12" r="10"/></svg> Docker</span>'
+    : '<span class="badge badge-static">Static</span>';
+
+  const defaultBadge = isDefault ? '<span class="badge badge-default">Default</span>' : '';
+
+  let actions = '';
+  if (isDocker) {
+    actions = '<span class="text-muted u-fs-11">Managed by Docker</span>';
+  } else {
+    const canEdit = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('edit_own_route'));
+    const canDelete = IS_ADMIN || (r.owner_id === USER_ID && USER_PERMS.has('delete_own_route'));
+    if (canEdit) {
+      actions += `<button type="button" class="btn btn-ghost btn-sm" data-edit-route-id="${r.id}" data-edit-route-hostname="${esc(r.hostname)}" data-edit-route-backend="${esc(backend)}" data-edit-route-default="${isDefault}">` +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Edit</button>';
+    }
+    if (canDelete) {
+      actions += `<button type="button" class="btn btn-danger btn-sm" data-delete-route-id="${r.id}" data-delete-route-name="${esc(r.hostname)}">` +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg> Delete</button>';
+    }
+  }
+
+  return `<tr id="row-${rowId}" data-hostname="${esc(r.hostname)}" data-source="${source}" data-backend="${esc(backend)}">` +
+    `<td><div class="u-row"><span class="mono text-white">${esc(hostname)}</span>${defaultBadge}</div></td>` +
+    `<td>${sourceBadge}</td>` +
+    `<td><div class="u-row-tight"><span class="backend-pill">${esc(backend)}</span>` +
+    `<button type="button" class="copy-btn" data-copy="${esc(backend)}" title="Copy backend address" aria-label="Copy backend address">` +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div></td>' +
+    `<td><div class="health-cell" id="health-cell-${rowId}" data-route-id="${isDocker ? '' : r.id}">` +
+    `<div class="dot ${healthDot}" id="health-dot-${rowId}"${healthTitleAttr}></div>` +
+    `<span class="health-label" id="health-text-${rowId}"${healthTitleAttr}>${healthText}</span></div></td>` +
+    `<td><span class="text-white conn-count" id="conn-${rowId}">${r.active_connections ?? 0}</span></td>` +
+    `<td><span class="badge badge-owner">${esc(owner)}</span></td>` +
+    `<td class="actions-cell">${actions}</td>` +
+    `</tr>`;
+}
+
+function routesEmptyHtml() {
+  const canCreate = IS_ADMIN || USER_PERMS.has('create_route');
+  return '<div class="empty-state" id="routes-empty">' +
+    '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg></div>' +
+    '<h3>No routes configured</h3>' +
+    '<p>Add your first route to start routing Minecraft traffic to your servers.</p>' +
+    (canCreate ? '<button type="button" class="btn btn-primary" data-action="open-route-modal">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add First Route</button>' : '') +
+    '</div>';
+}
+
+function renderRoutesTable(routes) {
+  const rows = routes.map((r, i) => routeRowHtml(r, i)).join('');
+  const card = document.getElementById('routes-card');
+  const tbody = document.getElementById('routes-body');
+
+  if (!routes.length) {
+    if (card) card.innerHTML = routesEmptyHtml();
+    return;
+  }
+
+  if (tbody) {
+
+
+    const focused = document.activeElement;
+    const focusKey =
+      focused && tbody.contains(focused)
+        ? `${focused.tagName}:${focused.dataset.action || ''}:${focused.dataset.editRouteId || focused.dataset.deleteRouteId || ''}`
+        : null;
+    tbody.innerHTML = rows;
+    if (focusKey) {
+      const restored = [...tbody.querySelectorAll('button')].find(
+        b => `${b.tagName}:${b.dataset.action || ''}:${b.dataset.editRouteId || b.dataset.deleteRouteId || ''}` === focusKey,
+      );
+      if (restored) restored.focus();
+    }
+    return;
+  }
+
+  if (card) {
+    card.innerHTML =
+      '<table class="data-table" aria-label="Route list"><thead><tr>' +
+      '<th scope="col">Hostname</th><th scope="col">Source</th><th scope="col">Backend</th>' +
+      '<th scope="col">Status</th><th scope="col">Connections</th><th scope="col">Owner</th>' +
+      '<th scope="col" class="u-text-right">Actions</th>' +
+      '</tr></thead><tbody id="routes-body">' + rows + '</tbody></table>';
+  }
+}
+
+async function refreshRoutesTable() {
+  try {
+    const r = await apiFetch('/api/routes');
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'Failed to load routes');
+    renderRoutesTable(d.routes);
+  } catch (err) {
+    showToast('Failed to refresh routes: ' + err.message, 'error');
+  }
+}
+
+function craftyHealthError(backend) {
+  if (!backend || !craftyServers.length) return null;
+  const srv = craftyServers.find(s => s.container_address === backend);
+  if (srv && !srv.running) return `Server stopped — start it in Crafty (${srv.name})`;
+  return null;
+}
+
+async function refreshHealth() {
+  const btn = document.querySelector('[data-action="refresh-health"]');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+
+  try {
+    const rows = document.querySelectorAll('[id^="row-"]');
+    await Promise.all([...rows].map(async row => {
+      const id = row.id.replace('row-', '');
+      if (!/^\d+$/.test(id)) return;
+      try {
+        const r = await apiFetch(`/api/health/${id}`);
+        const d = await r.json();
+
+        const healthCell = document.getElementById(`health-cell-${id}`);
+        if (healthCell) {
+          let dot = document.getElementById(`health-dot-${id}`);
+          let text = document.getElementById(`health-text-${id}`);
+
+          if (dot) {
+            dot.className = `dot ${d.healthy ? 'dot-green' : 'dot-red'}`;
+            if (!d.healthy && d.error) dot.title = d.error; else dot.removeAttribute('title');
+          }
+          if (text) {
+            let msg = d.healthy ? 'Reachable' : (d.error ? `Offline — ${d.error}` : 'Offline');
+            if (!d.healthy) {
+              const backend = row.dataset.backend;
+              const craftyMsg = craftyHealthError(backend);
+              if (craftyMsg) msg = craftyMsg;
+            }
+            text.textContent = msg;
+            if (!d.healthy && d.error) text.title = d.error; else text.removeAttribute('title');
+          }
+        }
+      } catch {
+
+      }
+    }));
+
+
+    const connRes = await apiFetch('/api/connections');
+    const connData = await connRes.json();
+    Object.entries(connData).forEach(([hostname, count]) => {
+      document.querySelectorAll('[data-hostname]').forEach(row => {
+        if (row.dataset.hostname === hostname) {
+          const connEl = row.querySelector('.conn-count');
+          if (connEl) connEl.textContent = count;
+        }
+      });
+    });
+    updateConnectionTotal();
+
+  } catch {
+    showToast('Failed to refresh health status', 'error');
+  }
+
+  if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+}
+
+async function loadCfRecords() {
+  const tbody = document.getElementById('cf-tbody');
+  const countEl = document.getElementById('cf-record-count');
+  if (!tbody) return;
+
+  tbody.innerHTML = skeletonRows([120,120,48,100,80]);
+
+  try {
+    const r = await apiFetch('/api/cf/records');
+    const d = await r.json();
+
+    if (!d.success) {
+      tbody.innerHTML = `<tr><td colspan="5" class="table-msg-error">${esc(d.error || 'Cloudflare request failed')}</td></tr>`;
+      return;
+    }
+
+    const canManage = IS_ADMIN || USER_PERMS.has('manage_cloudflare');
+
+    if (!d.records.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="table-msg">No DNS records found</td></tr>';
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+
+    if (countEl) countEl.textContent = `${d.records.length} records`;
+
+    tbody.innerHTML = d.records.map(rec => {
+      const ts = rec.modified_on ? relTime(rec.modified_on) : '—';
+      return `
+        <tr>
+          <td><span class="mono text-white">${esc(rec.name)}</span></td>
+          <td>
+            <span class="backend-pill">${esc(rec.content)}</span>
+            <button type="button" class="copy-btn" data-copy="${esc(rec.content)}" title="Copy IP" aria-label="Copy IP address">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+          </td>
+          <td class="text-muted">${rec.ttl === 1 ? 'Auto' : rec.ttl + 's'}</td>
+          <td><span class="ts-rel">${ts}</span></td>
+          ${canManage ? `<td class="actions-cell">
+            <button type="button" class="btn btn-danger btn-sm" data-cf-id="${esc(rec.id)}" data-cf-name="${esc(rec.name)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              Delete
+            </button>
+          </td>` : '<td></td>'}
+        </tr>`;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-msg-error">Failed to load DNS records</td></tr>';
+  }
+}
+
+function openCfCreateModal() {
+  document.getElementById('cf-new-hostname').value = '';
+  openModal('cf-create-modal');
+}
+
+async function createCfRecord() {
+  const hostname = document.getElementById('cf-new-hostname').value.trim();
+  if (!hostname) { showToast('Hostname is required', 'error'); return; }
+
+  const btn = document.querySelector('#cf-create-modal .btn-blue');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+
+  try {
+    const r = await apiFetch('/api/cf/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostname, ip: '' })
+    });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('cf-create-modal');
+      showToast(`A-record for ${hostname} created (auto-detected IP)`, 'success');
+      loadCfRecords();
+    } else {
+      showToast(d.error || 'Failed to create record', 'error');
+    }
+  } catch {
+    showToast('Network error', 'error');
+  } finally {
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+  }
+}
+
+let confirmCallback = null;
+
+function confirmAction(title, text, okLabel, callback) {
+  const titleEl = document.getElementById('confirm-modal-title');
+  const textEl = document.getElementById('confirm-modal-text');
+  const okEl = document.getElementById('confirm-modal-ok');
+  if (titleEl) titleEl.textContent = title;
+  if (textEl) textEl.textContent = text;
+  if (okEl) okEl.textContent = okLabel || 'Confirm';
+  confirmCallback = callback;
+  openModal('confirm-modal');
+}
+
+function deleteCfRecord(id, name) {
+  confirmAction(
+    'Delete DNS Record',
+    `Delete DNS record for "${name}"? This action cannot be undone.`,
+    'Delete Record',
+    () => doDeleteCfRecord(id, name),
+  );
+}
+
+async function doDeleteCfRecord(id, name) {
+  try {
+    const r = await apiFetch(`/api/cf/records/${id}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) {
+      showToast(`Record ${name} deleted`, 'success');
+      loadCfRecords();
+    } else {
+      showToast(d.error || 'Delete failed', 'error');
+    }
+  } catch {
+    showToast('Network error', 'error');
+  }
+}
+
+async function loadCraftyServers() {
+  const tbody  = document.getElementById('crafty-tbody');
+  const countEl = document.getElementById('crafty-server-count');
+  if (!tbody) return;
+
+  tbody.innerHTML = skeletonRows([80,64,80,120,64,80]);
+
+  try {
+    const r = await apiFetch('/api/crafty/servers');
+    const d = await r.json();
+
+    if (!d.success) {
+      tbody.innerHTML = `<tr><td colspan="6" class="table-msg-error">${esc(d.error || 'Failed to load')}</td></tr>`;
+      return;
+    }
+
+    if (d.configured === false || !d.servers.length && d.warning) {
+      tbody.innerHTML =
+        '<tr><td colspan="6" class="table-msg">Crafty not configured — ' +
+        '<a href="#" data-action="switch-tab" data-tab="settings" class="u-accent">Go to Settings</a></td></tr>';
+      return;
+    }
+
+    const canManage = IS_ADMIN || USER_PERMS.has('manage_servers');
+
+    if (!d.servers.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="table-msg">No servers found</td></tr>';
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+
+    if (countEl) countEl.textContent = `${d.servers.length} server${d.servers.length !== 1 ? 's' : ''}`;
+
+    tbody.innerHTML = d.servers.map(s => {
+      const cpu = Math.min(Math.round(s.cpu || 0), 100);
+      const ram = Math.min(Math.round(s.mem_percent || 0), 100);
+      const portHealth = s.running
+        ? (s.port_reachable
+            ? '<span class="dot dot-green u-inline-dot" title="Port reachable"></span>'
+            : `<span class="dot dot-warn u-inline-dot" title="${esc(s.port_error || 'Port unreachable')}"></span>`)
+        : '';
+
+      return `
+        <tr id="crafty-row-${esc(s.id)}">
+          <td>
+            <div class="server-name-cell">
+              <div class="server-status-icon ${s.running ? 'server-running' : 'server-stopped'}"></div>
+              <span class="text-white">${esc(s.name)}</span>
+            </div>
+          </td>
+          <td>
+            <span class="badge ${s.running ? 'badge-online' : 'badge-offline'}">${s.running ? 'Online' : 'Offline'}</span>
+          </td>
+          <td>
+            <span class="player-count">${s.running ? s.online_players : '—'}<span class="max">/${s.max_players}</span></span>
+          </td>
+          <td>
+            <div class="progress-stack">
+              <div class="progress-bar-wrap">
+                <span class="progress-label">CPU</span>
+                <div class="progress-bar"><div class="progress-fill cpu" data-bar-width="${cpu}"></div></div>
+                <span>${cpu}%</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <span class="progress-label">RAM</span>
+                <div class="progress-bar"><div class="progress-fill ram" data-bar-width="${ram}"></div></div>
+                <span>${ram}%</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="mono">${esc(String(s.port))}${portHealth}</span>
+          </td>
+          ${canManage ? `<td class="actions-cell">
+            <button type="button" class="btn btn-ghost btn-sm" data-crafty-port-id="${esc(s.id)}" data-crafty-port-name="${esc(s.name)}" data-crafty-port="${Number(s.port) || 0}" title="Change port">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Port
+            </button>
+            <button type="button" class="btn btn-sm ${s.running ? 'btn-ghost' : 'btn-green'}" data-crafty-action-id="${esc(s.id)}" data-crafty-action="${s.running ? 'restart' : 'start'}">
+              ${s.running
+                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg> Restart'
+                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start'}
+            </button>
+            ${s.running ? `<button type="button" class="btn btn-danger btn-sm" data-crafty-action-id="${esc(s.id)}" data-crafty-action="stop">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Stop
+            </button>` : ''}
+          </td>` : '<td></td>'}
+        </tr>`;
+    }).join('');
+    applyBarWidths(tbody);
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" class="table-msg-error">Failed to load servers</td></tr>';
+  }
+}
+
+function applyBarWidths(root) {
+  root.querySelectorAll('[data-bar-width]').forEach(el => {
+    el.style.width = `${Number(el.dataset.barWidth) || 0}%`;
+  });
+}
+
+async function craftyAction(serverId, action, btn) {
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+  try {
+    const fd = new FormData();
+    fd.append('action', action);
+    const r = await apiFetch(`/api/crafty/servers/${serverId}/action`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message || `Server ${action} sent`, 'success');
+      setTimeout(() => loadCraftyServers(), 2000);
+      return;
+    }
+    showToast(d.error || 'Action failed', 'error');
+  } catch {
+    showToast('Network error', 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = origHTML;
+}
+
+function openCraftyPortModal(serverId, serverName, currentPort) {
+  document.getElementById('cp-form-view').style.display = '';
+  document.getElementById('cp-progress-view').style.display = 'none';
+  document.getElementById('crafty-port-form').dataset.serverId = serverId;
+  document.getElementById('cp-server-name').textContent = serverName;
+  document.getElementById('cp-port').value = currentPort || '';
+  openModal('crafty-port-modal');
+}
+
+function showPortProgress(serverName, port) {
+  document.getElementById('cp-form-view').style.display = 'none';
+  document.getElementById('cp-progress-view').style.display = '';
+  document.getElementById('cp-modal-title').textContent = 'Changing Port…';
+  document.getElementById('cp-progress-name').textContent = serverName;
+  document.getElementById('cp-progress-port').textContent = port;
+  document.getElementById('cp-progress-footer').style.display = 'none';
+  document.getElementById('cp-summary').textContent = '';
+}
+
+function renderSteps(restart) {
+  const container = document.getElementById('cp-steps');
+  const steps = [
+    { id: 'stop', label: 'Stop server', visible: restart },
+    { id: 'file', label: 'Update server.properties' },
+    { id: 'api', label: 'Update Crafty database' },
+    { id: 'routes', label: 'Update routes' },
+    { id: 'start', label: 'Start server', visible: restart },
+  ];
+  container.innerHTML = steps.map(s => `
+    <div class="step${s.visible === false ? ' u-hidden' : ''}" id="step-${s.id}">
+      <div class="step-icon" id="step-icon-${s.id}">
+        <span class="spinner"></span>
+      </div>
+      <div>
+        <div class="step-label">${esc(s.label)}</div>
+        <div class="step-msg" id="step-msg-${s.id}"></div>
+      </div>
+    </div>
+  `).join('');
+
+  const first = steps.find(s => s.visible !== false);
+  if (first) setStepActive(first.id);
+}
+
+function setStepActive(id) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-active';
+  document.getElementById(`step-icon-${id}`).innerHTML = '<span class="spinner"></span>';
+}
+
+function setStepDone(id) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-done';
+  document.getElementById(`step-icon-${id}`).innerHTML = '✓';
+}
+
+function setStepError(id, msg) {
+  const el = document.getElementById(`step-${id}`);
+  if (!el) return;
+  el.className = 'step step-error';
+  document.getElementById(`step-icon-${id}`).innerHTML = '✗';
+  if (msg) document.getElementById(`step-msg-${id}`).textContent = msg;
+}
+
+function advanceStep(fromId, toId) {
+  setStepDone(fromId);
+  if (toId) setStepActive(toId);
+}
+
+async function submitCraftyPort() {
+  const form = document.getElementById('crafty-port-form');
+  const serverId = form.dataset.serverId;
+  const serverName = document.getElementById('cp-server-name').textContent;
+  const port = document.getElementById('cp-port').value;
+  const restart = document.getElementById('cp-restart')?.checked;
+  if (!serverId || !port) { showToast('Port is required', 'error'); return; }
+
+  showPortProgress(serverName, port);
+  renderSteps(restart);
+
+
+  async function animateSteps(results) {
+
+    if (restart) {
+      await sleep(400);
+      advanceStep('stop', 'file');
+    } else {
+      setStepActive('file');
+    }
+
+    await sleep(400);
+    if (results.file_updated) {
+      advanceStep('file', 'api');
+    } else {
+      setStepError('file', 'File not found — is the Crafty servers volume mounted?');
+      setStepError('api', 'Skipped');
+      setStepError('routes', 'Skipped');
+      showPortResult(false, 'Could not locate server.properties on the mounted volume.');
+      return;
+    }
+
+    await sleep(400);
+    if (results.api_updated) {
+      advanceStep('api', 'routes');
+    } else {
+      setStepError('api', 'Crafty API PATCH endpoint not available');
+      advanceStep('api', 'routes');
+    }
+
+    await sleep(400);
+    if (results.routes_updated > 0) {
+      advanceStep('routes', restart ? 'start' : null);
+    } else {
+      setStepDone('routes');
+      if (restart) setStepActive('start');
+    }
+
+    if (restart) {
+      await sleep(400);
+      setStepDone('start');
+    }
+
+    showPortResult(true, `Port changed to ${port} successfully.`);
+  }
+
+  const fd = new FormData();
+  fd.append('port', port);
+  if (restart) fd.append('restart', '1');
+
+  try {
+    const r = await apiFetch(`/api/crafty/servers/${serverId}/port`, { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.success) {
+      await animateSteps(d);
+      setTimeout(() => {
+        loadCraftyServers();
+
+
+        refreshRoutesTable();
+      }, 1500);
+    } else {
+      setStepError('file', d.file_updated === false ? 'File not found — check volume mount' : '');
+      setStepError('api', d.api_updated === false ? 'Crafty API rejected the change' : '');
+      showPortResult(false, d.error || 'Port change failed');
+    }
+  } catch {
+    showPortResult(false, 'Network error — could not reach the server.');
+  }
+}
+
+function showPortResult(success, message) {
+  document.getElementById('cp-modal-title').textContent = success ? 'Port Changed' : 'Port Change Failed';
+  const summary = document.getElementById('cp-summary');
+  summary.textContent = message;
+  summary.style.color = success ? 'var(--green)' : 'var(--danger)';
+  document.getElementById('cp-progress-footer').style.display = '';
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+let _usersLoaded = false;
+
+async function loadUsersList(force) {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  if (!force && _usersLoaded) return;
+
+  tbody.innerHTML = skeletonRows([120,64,100,80,80]);
+
+  try {
+    const r = await apiFetch('/api/users');
+    if (r.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    if (!r.ok) {
+      tbody.innerHTML =
+        '<tr><td colspan="5" class="table-msg-error">Unable to load users. ' +
+        'Check your permissions and retry.</td></tr>';
+      return;
+    }
+    const users = await r.json();
+    const canManage = IS_ADMIN || USER_PERMS.has('manage_users');
+
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="table-msg">No users found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = users.map(u => {
+      const isMe = u.id === USER_ID;
+
+
+      const initials = esc(u.username.slice(0, 2).toUpperCase());
+      const createdDate = u.created_at ? u.created_at.split('T')[0] : '—';
+      return `
+        <tr>
+          <td>
+            <div class="u-row-9">
+              <div class="user-avatar">${initials}</div>
+              <span class="text-white">${esc(u.username)}${isMe ? ' <span class="text-muted u-fs-11-normal">(you)</span>' : ''}</span>
+            </div>
+          </td>
+          <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
+          <td>
+            ${u.role !== 'admin' && canManage
+              ? `<button type="button" class="btn btn-ghost btn-sm" data-perm-user-id="${u.id}" data-perm-username="${esc(u.username)}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Permissions
+                </button>`
+              : '<span class="text-muted u-fs-12">Full access</span>'}
+          </td>
+          <td class="text-muted u-fs-12">${createdDate}</td>
+          ${canManage ? `<td class="actions-cell">
+            <button type="button" class="btn btn-ghost btn-sm" data-edit-user-id="${u.id}" data-edit-user-name="${esc(u.username)}" data-edit-user-role="${esc(u.role)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Edit
+            </button>
+            ${!isMe ? `<button type="button" class="btn btn-danger btn-sm" data-delete-user-id="${u.id}" data-delete-user-name="${esc(u.username)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              Delete
+            </button>` : ''}
+          </td>` : '<td></td>'}
+        </tr>`;
+    }).join('');
+    _usersLoaded = true;
+  } catch {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-msg-error">Failed to load users</td></tr>';
+  }
+}
+
+function openAddUserModal() {
+  document.getElementById('user-modal-title').textContent = 'Add User';
+  document.getElementById('u-username').value = '';
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-role').value = 'user';
+  document.getElementById('u-password-label').textContent = 'Password';
+  document.getElementById('u-password').required = true;
+  document.getElementById('u-password-hint').textContent = 'Choose a secure password (min. 12 characters).';
+  document.getElementById('user-modal-submit').textContent = 'Create User';
+  window._editUserId = null;
+  openModal('user-modal');
+}
+
+function openEditUserModal(id, username, role) {
+  document.getElementById('user-modal-title').textContent = 'Edit User';
+  document.getElementById('u-username').value = username;
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-role').value = role;
+  document.getElementById('u-password-label').textContent = 'New Password (leave blank to keep)';
+  document.getElementById('u-password').required = false;
+  document.getElementById('u-password-hint').textContent = 'Leave blank to keep the current password.';
+  document.getElementById('user-modal-submit').textContent = 'Save Changes';
+  window._editUserId = id;
+  openModal('user-modal');
+}
+
+async function submitUserForm() {
+  const id = window._editUserId;
+  const username = document.getElementById('u-username').value.trim();
+  const password = document.getElementById('u-password').value;
+  const role = document.getElementById('u-role').value;
+
+  if (!username) { showToast('Username is required', 'error'); return; }
+  if (!id && !password) { showToast('Password is required', 'error'); return; }
+  if (password && password.length < 12) { showToast('Password must be at least 12 characters', 'error'); return; }
+
+  const btn = document.getElementById('user-modal-submit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
+
+  try {
+    const url = id ? `/users/edit/${id}` : '/users/add';
+    const r = await apiFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role })
+    });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('user-modal');
+      showToast(d.message || 'User saved', 'success');
+      loadUsersList(true);
+    } else {
+      showToast(d.error || 'Failed to save user', 'error');
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = id ? 'Save Changes' : 'Create User';
+  }
+}
+
+function confirmDeleteUser(id, username) {
+  document.getElementById('delete-user-text').textContent =
+    `Are you sure you want to delete the user "${username}"? All their routes will remain but become ownerless.`;
+  openModal('delete-user-modal');
+  window._deleteUserId = id;
+}
+
+async function submitDeleteUser() {
+  const id = window._deleteUserId;
+  if (!id) return;
+  const btn = document.getElementById('delete-user-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Deleting…';
+  try {
+    const r = await apiFetch(`/users/delete/${id}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('delete-user-modal');
+      showToast(d.message || 'User deleted', 'success');
+      loadUsersList(true);
+    } else {
+      showToast(d.error || 'Delete failed', 'error');
+    }
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Delete User';
+    window._deleteUserId = null;
+  }
+}
+
+async function openPermModal(userId, username) {
+  document.getElementById('perm-modal-username').textContent = `Editing permissions for: ${username}`;
+  document.getElementById('perm-user-id').value = userId;
+  const grid = document.getElementById('perm-grid');
+  grid.innerHTML = '<div class="u-note">Loading…</div>';
+  openModal('perm-modal');
+
+  try {
+    const r = await apiFetch(`/api/permissions/${userId}`);
+    const d = await r.json();
+    const userPerms = new Set(d.permissions || []);
+
+    grid.innerHTML = ALL_PERMS.map(perm => {
+      const active = userPerms.has(perm);
+      return `
+        <div class="perm-item ${active ? 'active' : ''}" data-perm="${esc(perm)}"
+             role="checkbox" aria-checked="${active}" tabindex="0" data-action="toggle-perm">
+          <div class="perm-check" aria-hidden="true"></div>
+          <span>${esc(PERM_LABELS[perm] || perm)}</span>
+        </div>`;
+    }).join('');
+  } catch {
+    grid.innerHTML = '<div class="u-note-danger">Failed to load permissions</div>';
+  }
+}
+
+function togglePerm(el) {
+  el.classList.toggle('active');
+  el.setAttribute('aria-checked', el.classList.contains('active') ? 'true' : 'false');
+}
+
+async function savePermissions() {
+  const userId = document.getElementById('perm-user-id').value;
+  const perms = [...document.querySelectorAll('#perm-grid .perm-item.active')]
+    .map(el => el.dataset.perm);
+
+  const btn = document.querySelector('#perm-modal .modal-footer .btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner spinner-inline"></span> Saving…';
+
+  try {
+    const r = await apiFetch(`/api/permissions/${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions: perms })
+    });
+    const d = await r.json();
+    if (d.success) {
+      closeModal('perm-modal');
+      showToast('Permissions saved successfully', 'success');
+      loadUsersList(true);
+    } else {
+      showToast(d.error || 'Failed to save permissions', 'error');
+    }
+  } catch {
+    showToast('Network error', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Save Permissions';
+  }
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function updateConnectionTotal() {
+  let total = 0;
+  document.querySelectorAll('.conn-count').forEach(el => {
+    const value = Number(el.textContent);
+    if (Number.isFinite(value)) total += value;
+  });
+  const totalEl = document.getElementById('tab-count-routes');
+  if (totalEl) totalEl.textContent = total;
+}
+
+function relTime(isoString) {
+  try {
+    const diff = (Date.now() - new Date(isoString).getTime()) / 1000;
+    if (diff < 60)   return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+    return `${Math.floor(diff / 86400)} d ago`;
+  } catch { return ''; }
+}
+
+const ACTIONS = {
+  'toggle-theme': () => toggleTheme(),
+  'refresh-health': () => refreshHealth(),
+  'open-route-modal': () => openRouteModal(),
+  'close-route-modal': () => closeRouteModal(),
+  'open-cf-create-modal': () => openCfCreateModal(),
+  'create-cf-record': () => createCfRecord(),
+  'load-cf-records': () => loadCfRecords(),
+  'load-crafty-servers': () => loadCraftyServers(),
+  'open-add-user-modal': () => openAddUserModal(),
+  'submit-user-form': () => submitUserForm(),
+  'submit-delete-user': () => submitDeleteUser(),
+  'submit-delete-route': () => submitDeleteRoute(),
+  'save-permissions': () => savePermissions(),
+  'submit-crafty-port': () => submitCraftyPort(),
+  'validate': () => triggerValidation(),
+  'default-toggle': () => onDefaultToggle(),
+  'crafty-backend-select': () => onCraftyBackendSelect(),
+  'close-modal': el => closeModal(el.dataset.modal),
+  'switch-tab': el => switchTab(el.dataset.tab || el.value),
+  'toggle-perm': el => togglePerm(el),
+  'dismiss-flash': el => el.closest('.flash')?.remove(),
+  'copy': el => copyToClipboard(el.dataset.copy, el),
+  'open-edit-route-modal': el => openEditRouteModal(
+    Number(el.dataset.routeId),
+    el.dataset.hostname,
+    el.dataset.backend,
+    el.dataset.isDefault === '1',
+  ),
+  'confirm-delete-route': el => confirmDeleteRoute(
+    Number(el.dataset.routeId),
+    el.dataset.hostname,
+  ),
+};
+
+function runAction(event) {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+
+
+  if (event.type === 'input' && el.tagName === 'SELECT') return;
+
+  const handler = ACTIONS[el.dataset.action];
+  if (!handler) return;
+
+
+  if (event.type === 'submit' || el.tagName === 'A') event.preventDefault();
+  handler(el, event);
+}
+
+function bindActionDispatcher() {
+  ['click', 'change', 'input', 'submit'].forEach(type => {
+    document.addEventListener(type, runAction);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    const el = event.target.closest('[role="checkbox"][data-action]');
+    if (!el) return;
+    event.preventDefault();
+    runAction({ target: el, type: 'click' });
+  });
+}
+
+function bindDynamicActions() {
+  document.addEventListener('click', event => {
+    const target = event.target.closest('[data-cf-id], [data-crafty-port-id], [data-crafty-action-id], [data-perm-user-id], [data-edit-user-id], [data-delete-user-id], [data-edit-route-id], [data-delete-route-id]');
+    if (!target) return;
+
+    if (target.dataset.cfId) {
+      deleteCfRecord(target.dataset.cfId, target.dataset.cfName);
+    } else if (target.dataset.craftyPortId) {
+      openCraftyPortModal(
+        target.dataset.craftyPortId,
+        target.dataset.craftyPortName,
+        Number(target.dataset.craftyPort) || 0,
+      );
+    } else if (target.dataset.craftyActionId) {
+      craftyAction(target.dataset.craftyActionId, target.dataset.craftyAction, target);
+    } else if (target.dataset.permUserId) {
+      openPermModal(target.dataset.permUserId, target.dataset.permUsername);
+    } else if (target.dataset.editUserId) {
+      openEditUserModal(
+        target.dataset.editUserId,
+        target.dataset.editUserName,
+        target.dataset.editUserRole,
+      );
+    } else if (target.dataset.deleteUserId) {
+      confirmDeleteUser(target.dataset.deleteUserId, target.dataset.deleteUserName);
+    } else if (target.dataset.editRouteId !== undefined) {
+      openEditRouteModal(
+        Number(target.dataset.editRouteId),
+        target.dataset.editRouteHostname,
+        target.dataset.editRouteBackend,
+        target.dataset.editRouteDefault === 'true',
+      );
+    } else if (target.dataset.deleteRouteId !== undefined) {
+      confirmDeleteRoute(Number(target.dataset.deleteRouteId), target.dataset.deleteRouteName);
+    }
+  });
+
+  const confirmOk = document.getElementById('confirm-modal-ok');
+  if (confirmOk) {
+    confirmOk.addEventListener('click', () => {
+      closeModal('confirm-modal');
+      if (typeof confirmCallback === 'function') {
+        const cb = confirmCallback;
+        confirmCallback = null;
+        cb();
+      }
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  bindActionDispatcher();
+  bindDynamicActions();
+  document.querySelectorAll('[role="tab"]').forEach(tab => {
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const current = tabs.indexOf(tab);
+      const next = event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? tabs.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      event.preventDefault();
+      tabs[next].focus();
+      switchTab(tabs[next].id.replace('tab-btn-', ''));
+    });
+  });
+
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab');
+  const initialTab = (tabParam === 'settings') ? 'settings' : 'routes';
+  switchTab(initialTab);
+
+
+  if (params.toString()) {
+    const clean = window.location.pathname;
+    window.history.replaceState({}, '', clean);
+  }
+
+
+  document.querySelectorAll('.flash').forEach(el => {
+    setTimeout(() => {
+      el.style.transition = 'opacity 0.4s';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 400);
+    }, 5000);
+  });
+
+
+  function sseStatus(online, message) {
+    let banner = document.getElementById('sse-banner');
+    if (online) {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'sse-banner';
+      banner.className = 'sse-banner';
+      banner.setAttribute('role', 'status');
+      document.body.appendChild(banner);
+    }
+    banner.textContent = message || 'Live updates unavailable';
+  }
+
+  function connectSSE() {
+    const evtSource = new EventSource('/api/events');
+
+    evtSource.addEventListener('connected', () => {
+      console.debug('[SSE] Connected');
+    });
+
+    evtSource.onopen = () => sseStatus(true);
+
+    evtSource.addEventListener('connections', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        Object.entries(data).forEach(([hostname, count]) => {
+          const rows = document.querySelectorAll(`[data-hostname="${CSS.escape(hostname)}"]`);
+          rows.forEach(row => {
+            const connEl = row.querySelector('.conn-count');
+            if (connEl) connEl.textContent = count;
+          });
+        });
+
+
+
+        updateConnectionTotal();
+      } catch {}
+    });
+
+    evtSource.addEventListener('router-status', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        sseStatus(data.online !== false, data.online === false ? 'mc-router unreachable' : null);
+      } catch {}
+    });
+
+    evtSource.addEventListener('route-change', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.reason === 'crafty_port_change') return;
+      } catch {}
+      refreshRoutesTable();
+    });
+
+    evtSource.onerror = () => {
+
+
+
+      sseStatus(false, 'Reconnecting to live updates…');
+    };
+  }
+
+  connectSSE();
+});

@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Ruff
+        run: ruff check . --output-format=github
+
+  docker:
+    name: Build image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mc-router-ui:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the image
+        run: |
+          docker run -d --name ci-mc-router-ui \
+            -e ADMIN_PASSWORD=ci-test-password \
+            -e LOG_LEVEL=ERROR \
+            mc-router-ui:ci
+          for attempt in $(seq 1 30); do
+            if docker exec ci-mc-router-ui python -c \
+              "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"; then
+              echo "web UI is serving"
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::health endpoint never became ready"
+              docker logs ci-mc-router-ui
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "container runs as: $(docker exec ci-mc-router-ui id -un)"
+          docker exec ci-mc-router-ui id -un | grep -qx app \
+            || { echo "::error::container is not running as the unprivileged app user"; exit 1; }
+      - name: Container logs
+        if: always()
+        run: docker logs ci-mc-router-ui || true
+      - name: Cleanup
+        if: always()
+        run: docker rm -f ci-mc-router-ui || true
+
+  scan:
+    name: Scan image
+    runs-on: ubuntu-latest
+    needs: docker
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Build for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mc-router-ui:scan
+          cache-from: type=gha
+      - name: Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: mc-router-ui:scan
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@fca7ace96b7d713c7035871441bd52efbe39e27e
+        with:
+          sarif_file: trivy.sarif
