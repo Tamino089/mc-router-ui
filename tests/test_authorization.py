@@ -178,6 +178,17 @@ def test_connection_map_is_filtered_for_restricted_users(client, router_stub):
     assert body == {"visible.example.com": 2}
 
 
+def test_fallback_toggle_is_hidden_without_the_permission(default_user):
+    """The control must not be offered to a user the server would refuse."""
+    html = default_user.get("/").text
+    assert 'id="f-is-default"' not in html
+
+
+def test_fallback_toggle_is_shown_with_the_permission(admin_client):
+    html = admin_client.get("/").text
+    assert 'id="f-is-default"' in html
+
+
 def test_admin_sees_every_route(admin_client):
     add_route_direct("a.example.com")
     add_route_direct("b.example.com")

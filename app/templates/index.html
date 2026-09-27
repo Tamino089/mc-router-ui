@@ -537,6 +537,9 @@ window.MC_UI_CONFIG = {
         <div class="form-hint">The Minecraft client connects to this hostname.</div>
       </div>
 
+      {# The fallback route needs its own permission, so the control is hidden
+         from users who would be refused on submit. #}
+      {% if current_user.role == 'admin' or 'manage_default_route' in user_perms %}
       <div class="form-group">
         <label class="toggle-row" for="f-is-default">
           <input type="checkbox" id="f-is-default" data-action="default-toggle">
@@ -544,6 +547,7 @@ window.MC_UI_CONFIG = {
           <span class="toggle-label">Set as default route (fallback for unknown hostnames)</span>
         </label>
       </div>
+      {% endif %}
 
       <div class="form-group route-modal-field" id="f-backend-group">
         <label for="f-backend">Backend Server</label>

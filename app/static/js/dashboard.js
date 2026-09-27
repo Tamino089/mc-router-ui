@@ -261,7 +261,7 @@ async function openRouteModal() {
   document.getElementById('f-hostname').disabled = false;
   document.getElementById('f-domain').value = '';
   document.getElementById('f-backend').value = '';
-  document.getElementById('f-is-default').checked = false;
+  setDefaultSelected(false);
   savedHostname = '';
   resetValidation();
 
@@ -279,7 +279,7 @@ async function openEditRouteModal(id, hostname, backend, isDefault) {
   document.getElementById('route-modal-title').textContent = 'Edit Route';
   document.getElementById('route-submit').textContent = 'Save Changes';
   document.getElementById('f-route-id').value = id;
-  document.getElementById('f-is-default').checked = isDefault;
+  setDefaultSelected(isDefault);
 
   // Load zones for domain dropdown (needed before parsing hostname)
   await loadZones();
@@ -384,7 +384,9 @@ function onCraftyBackendSelect() {
 }
 
 function onDefaultToggle() {
-  const checked = document.getElementById('f-is-default').checked;
+  const toggle = defaultToggleEl();
+  if (!toggle) return;
+  const checked = isDefaultSelected();
   const hostnameInput = document.getElementById('f-hostname');
   if (checked) {
     savedHostname = hostnameInput.value;
@@ -397,8 +399,24 @@ function onDefaultToggle() {
   triggerValidation();
 }
 
+// The fallback toggle is only rendered for users holding manage_default_route,
+// so every read has to tolerate the element being absent.
+function defaultToggleEl() {
+  return document.getElementById('f-is-default');
+}
+
+function isDefaultSelected() {
+  const el = defaultToggleEl();
+  return el ? el.checked : false;
+}
+
+function setDefaultSelected(value) {
+  const el = defaultToggleEl();
+  if (el) el.checked = !!value;
+}
+
 function getEffectiveHostname() {
-  const isDefault = document.getElementById('f-is-default').checked;
+  const isDefault = isDefaultSelected();
   if (isDefault) return '__default__';
   const sub = document.getElementById('f-hostname').value.trim().toLowerCase();
   const domain = document.getElementById('f-domain').value;
@@ -447,7 +465,7 @@ async function performValidation() {
   const routeId  = document.getElementById('f-route-id').value;
   const hostname = getEffectiveHostname();
   const backend  = getEffectiveBackend();
-  const isDefault = document.getElementById('f-is-default').checked;
+  const isDefault = isDefaultSelected();
   const domain = document.getElementById('f-domain').value;
 
   ['val-format', 'val-cf', 'val-dns', 'val-backend'].forEach(id => updateValidation(id, 'checking', 'Checking…'));
@@ -519,7 +537,7 @@ async function saveRoute() {
 
   const hostname  = getEffectiveHostname();
   const backend   = getEffectiveBackend();
-  const isDefault = document.getElementById('f-is-default').checked;
+  const isDefault = isDefaultSelected();
 
   // Basic required field check
   if (!isDefault && !hostname) { showToast('Hostname is required', 'error'); return; }
