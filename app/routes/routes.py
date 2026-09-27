@@ -4,7 +4,6 @@ CRUD operations for Minecraft routes.
 
 import asyncio
 import logging
-import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -16,7 +15,6 @@ from app.core.validation import (
     is_valid_backend,
     normalize_backend,
     parse_backend,
-    valid_ip_port,
 )
 from app.db import schema
 from app.db.database import get_db
@@ -31,6 +29,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Hostname stored for the catch-all route; not a real DNS name.
+DEFAULT_HOSTNAME = "__default__"
+
+# Serializes route mutations. Holding a SQLite write transaction open across the
+# Cloudflare and mc-router calls would block every other writer for seconds, so
+# the transaction is kept short and this lock provides the mutual exclusion that
+# keeps the uniqueness check and insert from racing each other.
+_mutation_lock = asyncio.Lock()
+
+# Strong references to fire-and-forget tasks so they are not garbage collected.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _error(message: str, status_code: int = 400) -> JSONResponse:
+    return JSONResponse({"success": False, "error": message}, status_code=status_code)
+
 
 def _as_bool(value) -> bool:
     """Normalize JSON booleans and HTML form checkbox values."""
@@ -39,8 +53,86 @@ def _as_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "on", "yes"}
 
 
-async def _trigger_health_check(route_id: int, backend: str):
-    """Run an immediate TCP health check for a single route and store the result."""
+def _can_manage_default(user: dict) -> bool:
+    """The fallback route receives all unmatched traffic, so it needs its own grant."""
+    return user.get("role") == "admin" or user_has_perm(user, "manage_default_route")
+
+
+def _dns_message(is_default: bool, cf_err: str | None) -> str:
+    if is_default:
+        return ""
+    return f" (DNS: {cf_err})" if cf_err else " (DNS synced)"
+
+
+def _prepare_backend(backend: str):
+    """Validate and normalize a backend address.
+
+    Default routes are validated too: an unvalidated fallback backend would let a
+    caller point all unmatched Minecraft traffic at an arbitrary internal host.
+    """
+    if not backend:
+        return None, _error("Backend is required")
+    if not is_valid_backend(backend):
+        return None, _error(
+            "Backend must be a valid HOST:PORT "
+            "(for example 192.168.1.1:25565 or mc.example.com:25566)"
+        )
+    backend = normalize_backend(backend)
+    _, port = parse_backend(backend)
+    if not 1 <= port <= 65535:
+        return None, _error("Port must be between 1 and 65535")
+    return backend, None
+
+
+async def _resolve_hostname(raw_hostname: str, is_default: bool):
+    """Resolve and validate the hostname for a route."""
+    if is_default:
+        return raw_hostname or DEFAULT_HOSTNAME, None
+
+    if not raw_hostname:
+        return None, _error("Hostname is required")
+
+    if "." in raw_hostname:
+        hostname = raw_hostname
+        if not HOSTNAME_RE.match(hostname):
+            return None, _error(
+                "Hostname must be a valid FQDN (for example play.example.com)"
+            )
+    else:
+        cf_token, _, _ = await cloudflare.get_cf_config()
+        if not cf_token:
+            return None, _error(
+                "Cloudflare not configured. Provide a full FQDN "
+                "(for example play.example.com) or configure Cloudflare in Settings."
+            )
+        hostname = await cloudflare.resolve_hostname(raw_hostname)
+        if not hostname:
+            return None, _error("Could not resolve hostname via Cloudflare.")
+        if not HOSTNAME_RE.match(hostname):
+            return None, _error("Resolved hostname is not a valid FQDN")
+
+    valid, v_err = await cloudflare.validate_domain(hostname, is_default)
+    if not valid:
+        return None, _error(v_err)
+
+    if await docker_watcher.is_docker_managed(hostname):
+        return None, _error(
+            f"'{hostname}' is managed by a Docker container label "
+            "and cannot be edited here",
+            409,
+        )
+
+    return hostname, None
+
+
+def _schedule_health_check(route_id: int, backend: str) -> None:
+    """Queue an immediate health check without delaying the HTTP response."""
+    task = asyncio.create_task(_store_health_check(route_id, backend))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def _store_health_check(route_id: int, backend: str) -> None:
     try:
         host, port = parse_backend(backend)
         healthy, latency, error = await asyncio.to_thread(tcp_check, host, port, 3.0)
@@ -57,427 +149,284 @@ async def _trigger_health_check(route_id: int, backend: str):
             )
             con.commit()
     except Exception:
-        logger.warning("Immediate health check failed for route %s", route_id, exc_info=True)
+        logger.warning(
+            "Immediate health check failed for route %s", route_id, exc_info=True
+        )
 
 
 @router.post("/routes/add")
 async def add_route(request: Request):
     user = current_user(request)
     if not user:
-        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        return _error("Not authenticated", 401)
     if not user_has_perm(user, "create_route"):
-        return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
+        return _error("Permission denied", 403)
 
     data = await get_form_or_json(request)
-    raw_hostname = data.get("hostname", "").strip().lower()
-    backend = data.get("backend", "").strip()
-    is_def = _as_bool(data.get("is_default", False))
+    raw_hostname = str(data.get("hostname", "")).strip().lower()
+    is_default = _as_bool(data.get("is_default", False))
 
-    if not backend:
-        return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
-    if not raw_hostname and not is_def:
-        return JSONResponse({"success": False, "error": "Hostname is required"}, status_code=400)
+    if is_default and not _can_manage_default(user):
+        return _error("Permission denied for the default route", 403)
 
-    # ── Strict backend validation ────────────────────────────────────────────
-    if not is_def and not is_valid_backend(backend):
-        return JSONResponse(
-            {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
-            status_code=400,
-        )
-    # Normalize bare hostname/IP backends to include the default Minecraft port
-    if not is_def:
-        backend = normalize_backend(backend)
-    parts = backend.rsplit(":", 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        port = int(parts[1])
-        if port < 1 or port > 65535:
-            return JSONResponse({"success": False, "error": "Port must be between 1 and 65535"}, status_code=400)
+    backend, err = _prepare_backend(str(data.get("backend", "")).strip())
+    if err:
+        return err
 
-    try:
-        # Resolve subdomain-only hostname (e.g. "play" → "play.tamino089.com")
-        hostname = raw_hostname
-        if is_def:
-            # Default routes use a sentinel so the UNIQUE constraint and
-            # DNS-skip logic in sync_dns_for_route() work correctly.
-            hostname = raw_hostname or "__default__"
-        else:
-            # If hostname contains dots, treat as full FQDN — no Cloudflare needed
-            if "." in raw_hostname:
-                hostname = raw_hostname
-                # Validate FQDN format
-                if not HOSTNAME_RE.match(hostname):
-                    return JSONResponse(
-                        {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
-                        status_code=400,
-                    )
-                # Validate domain is under our Cloudflare zone
-                valid, v_err = await cloudflare.validate_domain(hostname, is_def)
-                if not valid:
-                    return JSONResponse({"success": False, "error": v_err}, status_code=400)
-            else:
-                # Subdomain-only — requires Cloudflare to resolve
-                cf_token, _, _ = await cloudflare.get_cf_config()
-                if not cf_token:
-                    return JSONResponse(
-                        {"success": False, "error": "Cloudflare not configured. Provide a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
-                        status_code=400,
-                    )
-                hostname = await cloudflare.resolve_hostname(raw_hostname)
-                if not hostname:
-                    return JSONResponse(
-                        {"success": False, "error": "Could not resolve hostname via Cloudflare."},
-                        status_code=400,
-                    )
+    hostname, err = await _resolve_hostname(raw_hostname, is_default)
+    if err:
+        return err
 
-                # Strict hostname validation for resolved name
-                if not HOSTNAME_RE.match(hostname):
-                    return JSONResponse(
-                        {"success": False, "error": "Resolved hostname is not a valid FQDN"},
-                        status_code=400,
-                    )
-
-                valid, v_err = await cloudflare.validate_domain(hostname, False)
-                if not valid:
-                    return JSONResponse({"success": False, "error": v_err}, status_code=400)
-
-            # Block Docker-managed hostnames (for both FQDN and resolved)
-            if await docker_watcher.is_docker_managed(hostname):
-                return JSONResponse(
-                    {"success": False, "error": f"'{hostname}' is managed by a Docker container label and cannot be edited here"},
-                    status_code=409,
-                )
-
-        # Step 1: Check DB uniqueness + snapshot the current default, holding a
-        # write lock so concurrent creates serialize instead of racing each other.
-        old_default = None
+    async with _mutation_lock:
         with get_db() as con:
-            con.execute("BEGIN IMMEDIATE")
-            existing = con.execute(
+            if con.execute(
                 "SELECT id FROM routes WHERE hostname=?", (hostname,)
-            ).fetchone()
-            if existing:
-                return JSONResponse({"success": False, "error": "Route already exists"}, status_code=409)
-            if is_def:
-                old_default = con.execute(
+            ).fetchone():
+                return _error("Route already exists", 409)
+            previous_defaults = [
+                dict(r)
+                for r in con.execute(
                     "SELECT id, backend FROM routes WHERE is_default=1"
-                ).fetchone()
-            con.commit()
+                ).fetchall()
+            ]
 
-        # Step 2: Create DNS record (rollback if later steps fail)
-        dns_done = False
+        # DNS is skipped for the catch-all route, which has no DNS record.
         dns_msg = ""
-        if not is_def:
-            cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
+        dns_done = False
+        if not is_default:
+            cf_err = await cloudflare.sync_dns_for_route(hostname, is_default)
             if cf_err:
                 dns_msg = f" (DNS: {cf_err})"
             else:
                 dns_done = True
                 dns_msg = " (DNS record created/updated)"
 
-        # Step 3: Push to mc-router
-        if is_def:
-            err = await mc_router.push_default(backend)
+        if is_default:
+            push_err = await mc_router.push_default(backend)
         else:
-            err = await mc_router.push_route(hostname, backend)
-        if err:
+            push_err = await mc_router.push_route(hostname, backend)
+
+        if push_err:
             if dns_done:
                 await cloudflare.cf_delete_record_by_hostname(hostname)
-            return JSONResponse({"success": False, "error": f"mc-router sync failed: {err}"}, status_code=500)
+            return _error(f"mc-router sync failed: {push_err}", 500)
 
-        # Step 4: Save to DB (final — source of truth). INSERT OR IGNORE makes
-        # the uniqueness check and insert atomic: even if another request snuck
-        # a row in after step 1, rowcount==0 tells us here and we roll back.
         try:
             with get_db() as con:
-                if is_def and old_default:
-                    con.execute(
-                        "UPDATE routes SET is_default=0 WHERE id=?",
-                        (old_default["id"],),
-                    )
-
+                if is_default:
+                    # Only one fallback may exist; demote any previous holder.
+                    con.execute("UPDATE routes SET is_default=0 WHERE is_default=1")
                 cur = con.execute(
-                    "INSERT OR IGNORE INTO routes (hostname, backend, is_default, source, owner_id) VALUES (?, ?, ?, 'static', ?)",
-                    (hostname, backend, int(is_def), user["id"]),
+                    """INSERT INTO routes (hostname, backend, is_default, source, owner_id)
+                       VALUES (?, ?, ?, 'static', ?)""",
+                    (hostname, backend, int(is_default), user["id"]),
                 )
-                if cur.rowcount == 0:
-                    if dns_done:
-                        await cloudflare.cf_delete_record_by_hostname(hostname)
-                    if not is_def:
-                        await mc_router.delete_route(hostname)
-                    else:
-                        if old_default:
-                            await mc_router.push_default(old_default["backend"])
-                        logger.warning("Route %s was created concurrently — rolled back external state", hostname)
-                    return JSONResponse({"success": False, "error": "Route already exists (concurrent creation)"}, status_code=409)
-
                 route_id = cur.lastrowid
                 con.commit()
-        except sqlite3.IntegrityError:
-            if dns_done:
-                await cloudflare.cf_delete_record_by_hostname(hostname)
-            if not is_def:
-                await mc_router.delete_route(hostname)
-            else:
-                if old_default:
-                    await mc_router.push_default(old_default["backend"])
-                logger.warning("DB save failed after mc-router default was set — restored previous default")
-            return JSONResponse({"success": False, "error": "Route already exists (concurrent creation)"}, status_code=409)
         except Exception:
+            logger.exception("Failed to persist route %s", hostname)
             if dns_done:
                 await cloudflare.cf_delete_record_by_hostname(hostname)
-            if not is_def:
-                await mc_router.delete_route(hostname)
+            if is_default:
+                for prev in previous_defaults:
+                    await mc_router.push_default(prev["backend"])
             else:
-                if old_default:
-                    await mc_router.push_default(old_default["backend"])
-                logger.warning("DB save failed after mc-router default was set — restored previous default")
-            raise
+                await mc_router.delete_route(hostname)
+            return _error("Could not save the route; external changes were rolled back", 500)
 
-        await _trigger_health_check(route_id, backend)
+    _schedule_health_check(route_id, backend)
+    await broadcast(
+        "route-change",
+        {"action": "add", "route_id": route_id, "hostname": hostname},
+    )
 
-        # Broadcast route change via SSE
-        await broadcast("route-change", {"action": "add", "route_id": route_id, "hostname": hostname})
-
-        resp = {"success": True, "message": f"Route added successfully{dns_msg}"}
-        return JSONResponse(resp)
-
-    except Exception as e:
-        logger.exception("Error adding route")
-        return JSONResponse({"success": False, "error": f"Error adding route: {e}"}, status_code=500)
+    return JSONResponse({"success": True, "message": f"Route added successfully{dns_msg}"})
 
 
 @router.post("/routes/edit/{route_id}")
 async def edit_route(request: Request, route_id: int):
     user = current_user(request)
     if not user:
-        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        return _error("Not authenticated", 401)
 
     data = await get_form_or_json(request)
-    raw_hostname = data.get("hostname", "").strip().lower()
-    backend = data.get("backend", "").strip()
-    is_def = _as_bool(data.get("is_default", False))
+    raw_hostname = str(data.get("hostname", "")).strip().lower()
+    is_default = _as_bool(data.get("is_default", False))
 
-    if not backend:
-        return JSONResponse({"success": False, "error": "Backend is required"}, status_code=400)
-    if not is_def and not is_valid_backend(backend):
-        return JSONResponse(
-            {"success": False, "error": "Backend must be a valid HOST:PORT (e.g. 192.168.1.1:25565 or mc.example.com:25566)"},
-            status_code=400,
-        )
-    # Normalize bare hostname/IP backends to include the default Minecraft port
-    if not is_def:
-        backend = normalize_backend(backend)
-    parts = backend.rsplit(":", 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        port = int(parts[1])
-        if port < 1 or port > 65535:
-            return JSONResponse({"success": False, "error": "Port must be between 1 and 65535"}, status_code=400)
+    backend, err = _prepare_backend(str(data.get("backend", "")).strip())
+    if err:
+        return err
 
-    hostname = raw_hostname
-    if is_def:
-        hostname = raw_hostname or "__default__"
-    elif hostname:
-        # If hostname contains dots, treat as full FQDN — no Cloudflare needed
-        if "." in raw_hostname:
-            hostname = raw_hostname
-            # Validate FQDN format
-            if not HOSTNAME_RE.match(hostname):
-                return JSONResponse(
-                    {"success": False, "error": "Hostname must be a valid FQDN (e.g. play.example.com)"},
-                    status_code=400,
-                )
-            # Validate domain is under our Cloudflare zone
-            valid, v_err = await cloudflare.validate_domain(hostname, is_def)
-            if not valid:
-                return JSONResponse({"success": False, "error": v_err}, status_code=400)
-        else:
-            # Subdomain-only — requires Cloudflare to resolve
-            cf_token, _, _ = await cloudflare.get_cf_config()
-            if not cf_token:
-                return JSONResponse(
-                    {"success": False, "error": "Cloudflare not configured. Provide a full FQDN (e.g. play.example.com) or configure Cloudflare in Settings."},
-                    status_code=400,
-                )
-            hostname = await cloudflare.resolve_hostname(raw_hostname)
-            if not hostname:
-                return JSONResponse(
-                    {"success": False, "error": "Could not resolve hostname via Cloudflare."},
-                    status_code=400,
-                )
+    hostname, err = await _resolve_hostname(raw_hostname, is_default)
+    if err:
+        return err
 
-            # Strict hostname validation for resolved name
-            if not HOSTNAME_RE.match(hostname):
-                return JSONResponse(
-                    {"success": False, "error": "Resolved hostname is not a valid FQDN"},
-                    status_code=400,
-                )
-
-            valid, v_err = await cloudflare.validate_domain(hostname, False)
-            if not valid:
-                return JSONResponse({"success": False, "error": v_err}, status_code=400)
-
-        # Block Docker-managed hostnames (for both FQDN and resolved)
-        if await docker_watcher.is_docker_managed(hostname):
-            return JSONResponse(
-                {"success": False, "error": f"'{hostname}' is managed by a Docker container label and cannot be edited here"},
-                status_code=409,
-            )
-
-    # Read existing route + validate ownership + check hostname uniqueness
-    # in a single transaction to prevent TOCTOU races
-    #
-    # cf_err/dns_done/old_* are defined here (not inside the try) so that if an
-    # exception is raised before they're assigned below, the `except` block's
-    # rollback logic doesn't itself crash with a NameError and mask the real
-    # error.
-    cf_err = None
-    dns_done = False
-    old_hostname = None
-    old_backend = None
-    old_is_default = False
-    try:
+    async with _mutation_lock:
         with get_db() as con:
-            con.execute("BEGIN IMMEDIATE")
-            r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
-            if not r_row:
-                return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
-
-            if r_row["source"] == "docker":
-                return JSONResponse(
-                    {"success": False, "error": "This route is managed by Docker labels and cannot be edited"},
-                    status_code=403,
+            row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
+            if not row:
+                return _error("Route not found", 404)
+            if row["source"] == "docker":
+                return _error(
+                    "This route is managed by Docker labels and cannot be edited", 403
                 )
 
-            if user.get("role") != "admin" and (r_row["owner_id"] != user["id"] or not user_has_perm(user, "edit_own_route")):
-                return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
+            was_default = bool(row["is_default"])
+            if (is_default or was_default) and not _can_manage_default(user):
+                return _error("Permission denied for the default route", 403)
+            if not was_default and (
+                user.get("role") != "admin"
+                and (
+                    row["owner_id"] != user["id"]
+                    or not user_has_perm(user, "edit_own_route")
+                )
+            ):
+                return _error("Permission denied", 403)
 
-            old_hostname = r_row["hostname"]
-            old_is_default = bool(r_row["is_default"])
-            old_backend = r_row["backend"]
+            hostname_changed = hostname != row["hostname"]
+            if hostname_changed and con.execute(
+                "SELECT id FROM routes WHERE hostname=?", (hostname,)
+            ).fetchone():
+                return _error("Hostname already exists", 409)
 
-            if hostname != old_hostname:
-                existing = con.execute("SELECT id FROM routes WHERE hostname=?", (hostname,)).fetchone()
-                if existing:
-                    return JSONResponse({"success": False, "error": "Hostname already exists"}, status_code=409)
+            old_hostname = row["hostname"]
+            old_backend = row["backend"]
 
-            # Step 1: Create NEW DNS record
-            cf_err = None
-            dns_done = False
-            if not is_def:
-                cf_err = await cloudflare.sync_dns_for_route(hostname, is_def)
-                dns_done = not cf_err
+        dns_done = False
+        cf_err = None
+        if not is_default:
+            cf_err = await cloudflare.sync_dns_for_route(hostname, is_default)
+            dns_done = not cf_err
 
-            # Step 2: Push to mc-router (hard requirement — rollback DNS on failure)
-            if is_def:
-                err = await mc_router.push_default(backend)
-            else:
-                err = await mc_router.push_route(hostname, backend)
-            if err:
-                if dns_done:
-                    await cloudflare.cf_delete_record_by_hostname(hostname)
-                return JSONResponse({
+        if is_default:
+            push_err = await mc_router.push_default(backend)
+        else:
+            push_err = await mc_router.push_route(hostname, backend)
+
+        if push_err:
+            if dns_done:
+                await cloudflare.cf_delete_record_by_hostname(hostname)
+            return JSONResponse(
+                {
                     "success": False,
                     "status": "PARTIAL_FAILURE",
-                    "errors": [{"code": "MC_ROUTER_SYNC_FAILED", "message": err}],
-                }, status_code=502)
-
-            # Delete OLD route from mc-router (only if hostname changed)
-            if not old_is_default and old_hostname != hostname:
-                del_err = await mc_router.delete_route(old_hostname)
-                if del_err:
-                    logger.warning("Failed to delete old route %s from mc-router: %s", old_hostname, del_err)
-
-            # Step 3: Save to DB — within the same transaction as the read
-            con.execute(
-                "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
-                (hostname, backend, int(is_def), route_id),
+                    "errors": [{"code": "MC_ROUTER_SYNC_FAILED", "message": push_err}],
+                },
+                status_code=502,
             )
-            con.commit()
 
-            # Step 4: Delete old DNS record only after everything succeeds
-            if dns_done and old_hostname != hostname and not old_is_default:
-                await cloudflare.cf_delete_record_by_hostname(old_hostname)
-    except Exception:
-        logger.exception("Error editing route %d", route_id)
-        # Best-effort rollback: undo the NEW mc-router/DNS state, then restore
-        # the OLD route so the router is never left without a route for this host.
-        if not is_def and dns_done:
-            await cloudflare.cf_delete_record_by_hostname(hostname)
-        restore_err = None
-        if old_backend is not None:
-            if is_def:
-                # A new default was pushed; restore the previous default.
+        # The old hostname no longer routes anywhere once the new one is live.
+        if not was_default and not is_default and hostname_changed:
+            del_err = await mc_router.delete_route(old_hostname)
+            if del_err:
+                logger.warning(
+                    "Failed to delete old route %s from mc-router: %s",
+                    old_hostname,
+                    del_err,
+                )
+
+        try:
+            with get_db() as con:
+                if is_default:
+                    con.execute(
+                        "UPDATE routes SET is_default=0 WHERE is_default=1 AND id!=?",
+                        (route_id,),
+                    )
+                con.execute(
+                    "UPDATE routes SET hostname=?, backend=?, is_default=? WHERE id=?",
+                    (hostname, backend, int(is_default), route_id),
+                )
+                con.commit()
+        except Exception:
+            logger.exception("Failed to update route %s", route_id)
+            if dns_done:
+                await cloudflare.cf_delete_record_by_hostname(hostname)
+            if is_default:
                 restore_err = await mc_router.push_default(old_backend)
             else:
-                # The new hostname route was pushed; remove it and restore the old.
                 await mc_router.delete_route(hostname)
-                if old_is_default:
-                    restore_err = await mc_router.push_default(old_backend)
-                elif old_hostname:
-                    restore_err = await mc_router.push_route(old_hostname, old_backend)
-        if restore_err:
-            logger.error("Failed to restore route after edit rollback: %s", restore_err)
-        return JSONResponse({"success": False, "error": "Failed to update route — changes rolled back"}, status_code=500)
+                restore_err = await mc_router.push_route(old_hostname, old_backend)
+            if restore_err:
+                logger.error("Failed to restore route after edit: %s", restore_err)
+            return _error("Failed to update route; changes were rolled back", 500)
 
-    await _trigger_health_check(route_id, backend)
-    await broadcast("route-change", {"action": "edit", "route_id": route_id, "hostname": hostname})
+        if dns_done and hostname_changed and not is_default:
+            await cloudflare.cf_delete_record_by_hostname(old_hostname)
 
-    dns_msg = ""
-    if not is_def and not cf_err:
-        dns_msg = " (DNS synced)"
-    elif cf_err:
-        dns_msg = f" (DNS: {cf_err})"
+    _schedule_health_check(route_id, backend)
+    await broadcast(
+        "route-change",
+        {"action": "edit", "route_id": route_id, "hostname": hostname},
+    )
 
-    return JSONResponse({"success": True, "message": f"Route updated successfully{dns_msg}"})
+    return JSONResponse({"success": True, "message": f"Route updated successfully{_dns_message(is_default, cf_err)}"})
 
 
 @router.post("/routes/delete/{route_id}")
 async def delete_route(request: Request, route_id: int):
     user = current_user(request)
     if not user:
-        return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        return _error("Not authenticated", 401)
 
-    with get_db() as con:
-        r_row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
-        if not r_row:
-            return JSONResponse({"success": False, "error": "Route not found"}, status_code=404)
+    async with _mutation_lock:
+        with get_db() as con:
+            row = con.execute("SELECT * FROM routes WHERE id=?", (route_id,)).fetchone()
+            if not row:
+                return _error("Route not found", 404)
+            if row["source"] == "docker":
+                return _error(
+                    "This route is managed by Docker labels and cannot be deleted", 403
+                )
 
-        # ── Block deleting Docker-managed routes ─────────────────────────────
-        if r_row["source"] == "docker":
-            return JSONResponse(
-                {"success": False, "error": "This route is managed by Docker labels and cannot be deleted"},
-                status_code=403,
-            )
+            is_default = bool(row["is_default"])
+            if is_default and not _can_manage_default(user):
+                return _error("Permission denied for the default route", 403)
+            if not is_default and (
+                user.get("role") != "admin"
+                and (
+                    row["owner_id"] != user["id"]
+                    or not user_has_perm(user, "delete_own_route")
+                )
+            ):
+                return _error("Permission denied", 403)
 
-        if user.get("role") != "admin" and (r_row["owner_id"] != user["id"] or not user_has_perm(user, "delete_own_route")):
-            return JSONResponse({"success": False, "error": "Permission denied"}, status_code=403)
+            hostname = row["hostname"]
+            # health_checks and health_history cascade from this delete.
+            con.execute("DELETE FROM routes WHERE id=?", (route_id,))
+            con.commit()
 
-        hostname = r_row["hostname"]
-        is_default = bool(r_row["is_default"])
+        warning = None
+        if is_default:
+            # mc-router has no DELETE for the default route, so it is cleared
+            # best-effort; the fallback otherwise stays active until restart.
+            if await mc_router.clear_default():
+                warning = (
+                    "The fallback backend could not be cleared on mc-router and "
+                    "may stay active until it restarts."
+                )
+                logger.warning("Failed to clear the default route on mc-router")
+        else:
+            del_err = await mc_router.delete_route(hostname)
+            if del_err:
+                logger.warning("Failed to delete route on router: %s", del_err)
+            cf_err = await cloudflare.cf_delete_record_by_hostname(hostname)
+            if cf_err:
+                logger.warning("Failed to delete DNS record: %s", cf_err)
 
-        con.execute("DELETE FROM routes WHERE id=?", (route_id,))
-        con.execute("DELETE FROM health_checks WHERE route_id=?", (route_id,))
-        con.commit()
+    await broadcast(
+        "route-change",
+        {"action": "delete", "route_id": route_id, "hostname": hostname},
+    )
 
-    if not is_default:
-        err = await mc_router.delete_route(hostname)
-        if err:
-            logger.warning("Failed to delete route on router: %s", err)
-
-    if not is_default:
-        cf_err = await cloudflare.cf_delete_record_by_hostname(hostname)
-        if cf_err:
-            logger.warning("Failed to delete DNS record: %s", cf_err)
-
-    # Broadcast route change via SSE
-    await broadcast("route-change", {"action": "delete", "route_id": route_id, "hostname": hostname})
-
-    return JSONResponse({"success": True, "message": "Route deleted successfully"})
+    message = "Route deleted successfully"
+    if warning:
+        message = f"{message}. {warning}"
+    return JSONResponse({"success": True, "message": message})
 
 
 @router.get("/api/routes")
 async def list_routes(request: Request):
-    """JSON route list for the dashboard (permission-aware, incl. Docker routes)."""
+    """Permission-aware JSON route list, including Docker-discovered routes."""
     user = current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")

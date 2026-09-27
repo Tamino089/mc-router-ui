@@ -1,5 +1,5 @@
 """
-Shared utilities for route handlers.
+Shared helpers for route handlers.
 """
 
 from typing import Optional
@@ -8,13 +8,19 @@ from fastapi import Request
 
 
 async def get_form_or_json(request: Request) -> dict:
-    """Extract form data from either JSON body or form-encoded POST."""
+    """Return the request body as a dict from JSON or form-encoded input.
+
+    A JSON body that is not an object (list, string, number) yields an empty
+    dict so callers can treat malformed input as a validation failure instead of
+    raising AttributeError on .get().
+    """
     content_type = request.headers.get("content-type", "")
     if "json" in content_type:
         try:
-            return await request.json()
+            body = await request.json()
         except Exception:
             return {}
+        return body if isinstance(body, dict) else {}
     try:
         form = await request.form()
         return {k: v for k, v in form.items()}
@@ -23,7 +29,7 @@ async def get_form_or_json(request: Request) -> dict:
 
 
 def set_flash(request: Request, type_: str, message: str) -> None:
-    """Store a one-shot flash message in the session (survives the redirect)."""
+    """Store a one-shot flash message in the session, surviving one redirect."""
     request.session["flash"] = {"type": type_, "message": message}
 
 
