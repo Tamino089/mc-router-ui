@@ -87,12 +87,20 @@ jobs:
           "
       - name: Smoke test the logs reach docker logs
         run: |
-          # Child output used to go to files inside the container, which made a
-          # crash loop look like an empty log in the unRAID UI.
-          docker logs ci-mc-router-ui 2>&1 | grep -q "Uvicorn running on" \
-            || { echo "::error::the web UI's own output is not in docker logs"; docker logs ci-mc-router-ui; exit 1; }
-          docker logs ci-mc-router-ui 2>&1 | grep -q "supervisord started" \
-            || { echo "::error::supervisord's activity log is not in docker logs"; exit 1; }
+          # The services write to files that the entrypoint streams to the
+          # container log, and supervisord mirrors its own activity log to stdout.
+          # All of it must be visible without exec'ing into the container.
+          check_log() {
+            for _ in $(seq 1 10); do
+              docker logs ci-mc-router-ui 2>&1 | grep -q "$1" && return 0
+              sleep 1
+            done
+            echo "::error::$2"
+            docker logs ci-mc-router-ui
+            return 1
+          }
+          check_log "supervisord started" "supervisord's activity log is not in docker logs"
+          check_log "Uvicorn running on" "the web UI's own output is not in docker logs"
       - name: Smoke test repair of a root-owned data directory
         run: |
           # Reproduce a bind mount left behind by an older install: a root-owned,

@@ -44,18 +44,20 @@ docker logs --tail 60 "$C" 2>&1
 line "entrypoint's own lines (data directory repair)"
 docker logs "$C" 2>&1 | grep '\[entrypoint\]' || echo "(no entrypoint lines)"
 
-line "legacy log files (builds before 1.0.1 only)"
+line "service log files (LOG_DIR, streamed to the container log above)"
 if [ "$(docker inspect -f '{{.State.Running}}' "$C")" = "true" ]; then
-  if docker exec "$C" sh -c 'test -d /var/log/supervisor' 2>/dev/null; then
-    docker exec "$C" sh -c 'ls -la /var/log/supervisor/ 2>&1'
-    for f in supervisord.log web-ui-err.log mc-router-err.log; do
+  LOGDIR="$(docker exec "$C" sh -c 'printf %s "${LOG_DIR:-/var/log/supervisor}"' 2>/dev/null)"
+  echo "LOG_DIR=$LOGDIR"
+  if docker exec "$C" sh -c "test -d '$LOGDIR'" 2>/dev/null; then
+    docker exec "$C" sh -c "ls -la '$LOGDIR' 2>&1"
+    for f in web-ui-err.log mc-router-err.log web-ui.log; do
       printf '\n--- %s (tail 40) ---\n' "$f"
-      docker exec "$C" sh -c "tail -n 40 /var/log/supervisor/$f 2>&1"
+      docker exec "$C" sh -c "tail -n 40 '$LOGDIR/$f' 2>&1"
     done
   else
-    echo "no /var/log/supervisor in this build: everything is in docker logs above"
+    echo "no $LOGDIR in this build: everything is in docker logs above"
   fi
-  line "what the services run as (read from /proc: the image has no ps)"
+  line "processes (read from /proc: the image has no ps)"
   docker exec "$C" python3 -c "
 import os, pwd
 for pid in sorted(filter(str.isdigit, os.listdir('/proc')), key=int):
@@ -65,20 +67,21 @@ for pid in sorted(filter(str.isdigit, os.listdir('/proc')), key=int):
         uid = os.stat('/proc/' + pid).st_uid
     except OSError:
         continue
-    if 'app.main:app' in cmdline or 'api-binding' in cmdline or 'supervisord' in cmdline:
+    if ('app.main:app' in cmdline or 'api-binding' in cmdline
+            or 'supervisord' in cmdline or 'tail -F' in cmdline):
         print('  pid %-6s uid=%s (%s)  %s' % (pid, uid, pwd.getpwuid(uid).pw_name, cmdline[:90]))
 " 2>&1
 else
-  echo "container is not running; copying any legacy log files out instead"
+  echo "container is not running; copying any log files out instead"
   TMP="$(mktemp -d)"
   if docker cp "$C:/var/log/supervisor/." "$TMP/" 2>/dev/null; then
     ls -la "$TMP"
-    for f in supervisord.log web-ui-err.log mc-router-err.log; do
+    for f in web-ui-err.log web-ui.log mc-router-err.log; do
       printf '\n--- %s (tail 40) ---\n' "$f"
       tail -n 40 "$TMP/$f" 2>&1
     done
   else
-    echo "no legacy log files in the container layer."
+    echo "no log files in the container layer."
     echo "Combined with empty 'docker logs' this means the container process never"
     echo "ran: look at state.error above, the port allocations, and the mounts."
   fi

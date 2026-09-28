@@ -31,8 +31,8 @@ RUN set -eux; \
     groupadd --gid "${APP_GID}" app || groupadd app; \
     useradd --uid "${APP_UID}" --gid app --no-create-home \
         --shell /usr/sbin/nologin app; \
-    mkdir -p /data; \
-    chown -R app:app /data /srv
+    mkdir -p /data /var/log/supervisor; \
+    chown -R app:app /data /var/log/supervisor /srv
 
 VOLUME ["/data"]
 
@@ -42,6 +42,7 @@ ENV MC_PORT=25565 \
     API_PORT=8080 \
     MC_ROUTER_API=http://localhost:8080 \
     DB_PATH=/data/mcrouter-ui.db \
+    LOG_DIR=/var/log/supervisor \
     ADMIN_USERNAME=admin \
     CLOUDFLARE_ZONE_ID="" \
     CLOUDFLARE_ZONE_NAME="" \

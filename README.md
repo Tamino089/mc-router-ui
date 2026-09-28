@@ -87,12 +87,27 @@ chown -R 1000:1000 /path/to/appdata/mc-router-ui
 
 ### Logs
 
-supervisord and both services log to stdout and stderr, so `docker logs` and the
-unRAID log viewer show everything, including Python tracebacks:
+`docker logs` and the unRAID log viewer show everything: supervisord's activity
+(mirrored to stdout while it runs in the foreground) and the output of both
+services, which the entrypoint streams from their log files.
 
 ```bash
 docker logs -f mc-router-ui
+docker logs --tail 100 mc-router-ui
 ```
+
+The files themselves are kept in `/var/log/supervisor` (`LOG_DIR`), with
+`mc-router.log`, `mc-router-err.log`, `web-ui.log` and `web-ui-err.log`. They are
+handy when you want one service on its own:
+
+```bash
+docker exec mc-router-ui tail -n 50 /var/log/supervisor/web-ui-err.log
+```
+
+Services log to files rather than to `/dev/stdout` directly because a non-root
+user cannot re-open `/dev/stdout` in Docker: the container's stdout is a pipe
+owned by root, and re-opening it fails with `PermissionError`. Writing to the
+already-open descriptor is what makes the streaming work.
 
 ### Unraid
 

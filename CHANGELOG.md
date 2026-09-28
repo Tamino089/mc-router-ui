@@ -13,10 +13,16 @@ Notable changes. This project follows [Semantic Versioning](https://semver.org).
   used to make the web UI exit at import time with `sqlite3.OperationalError:
   attempt to write a readonly database`, leaving the container "running" and
   unhealthy with no web UI and an empty log in the unRAID UI.
-- supervisord and both services now log to stdout and stderr, so `docker logs`
-  and the unRAID log viewer show the real error. Previously supervisord's
-  activity log was the only thing on stdout and every Python traceback went to a
-  file inside the container, which made a crash loop look like silence.
+- `docker logs` and the unRAID log viewer now show the real error instead of
+  supervisord's activity summary alone. supervisord mirrors its own log to
+  stdout while running in the foreground, and the entrypoint streams the service
+  log files to the container log with `tail -F`, so Python tracebacks are visible
+  without exec'ing into the container. The services keep writing to
+  `/var/log/supervisor` (`LOG_DIR`) as well.
+  Logging straight to `/dev/stdout` is not an option: Docker gives the container
+  a stdout pipe owned by root, and a non-root process cannot re-open it
+  (`PermissionError: '/dev/stdout'`), which is why the previous attempt at this
+  crash-looped.
 - The startup failure message now names the uid the web UI runs as and the
   `chown` command that fixes it, instead of only "check that DB_PATH is
   writable".
