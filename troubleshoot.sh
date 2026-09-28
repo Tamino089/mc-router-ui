@@ -60,7 +60,10 @@ if [ "$(docker inspect -f '{{.State.Running}}' "$C")" = "true" ]; then
   line "processes (read from /proc: the image has no ps)"
   docker exec "$C" python3 -c "
 import os, pwd
-for pid in sorted(filter(str.isdigit, os.listdir('/proc')), key=int):
+skip = {os.getpid(), os.getppid()}
+for pid in sorted((p for p in os.listdir('/proc') if p.isdigit()), key=int):
+    if int(pid) in skip:
+        continue
     try:
         with open('/proc/%s/cmdline' % pid, 'rb') as handle:
             cmdline = handle.read().decode('utf-8', 'replace').replace(chr(0), ' ').strip()

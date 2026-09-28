@@ -63,11 +63,15 @@ jobs:
           done
           echo "services run as (read from /proc, the image has no ps):"
           # The entrypoint starts as root to repair the data directory, so assert
-          # that the services themselves still run unprivileged.
+          # that the services themselves still run unprivileged. Skip this script
+          # and its parent: their command lines contain the patterns below.
           docker exec ci-mc-router-ui python3 -c "
           import os, pwd, sys
+          skip = {os.getpid(), os.getppid()}
           found = {}
           for pid in filter(str.isdigit, os.listdir('/proc')):
+              if int(pid) in skip:
+                  continue
               try:
                   with open('/proc/%s/cmdline' % pid, 'rb') as handle:
                       cmdline = handle.read().decode('utf-8', 'replace').replace(chr(0), ' ')
