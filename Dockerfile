@@ -24,13 +24,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY supervisord.conf /etc/supervisor/conf.d/mcrouter.conf
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN set -eux; \
     groupadd --gid "${APP_GID}" app || groupadd app; \
     useradd --uid "${APP_UID}" --gid app --no-create-home \
         --shell /usr/sbin/nologin app; \
-    mkdir -p /data /var/log/supervisor; \
-    chown -R app:app /data /var/log/supervisor /srv
+    mkdir -p /data; \
+    chown -R app:app /data /srv
 
 VOLUME ["/data"]
 
@@ -66,7 +68,11 @@ LABEL org.opencontainers.image.title="MC Router UI" \
 
 STOPSIGNAL SIGTERM
 
-USER app
+# The entrypoint starts as root only to repair ownership of the mounted data
+# directory, then drops to the unprivileged "app" user before supervisord (and
+# therefore both services) starts. Running the container as a non-root user is
+# still supported: the entrypoint skips the repair and reports what is wrong.
+USER root
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/mcrouter.conf"]

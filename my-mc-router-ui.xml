@@ -12,12 +12,12 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Tamino089/mc-router-ui/issues</Support>
   <Project>https://github.com/Tamino089/mc-router-ui</Project>
-  <Overview>Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS, Crafty Controller integration, and Docker label discovery. mc-router and the web UI run together in a single container managed by supervisord. The container runs unprivileged; grant access to the Docker socket with the socket group id, or set the container user to root.</Overview>
+  <Overview>Minecraft reverse-proxy web UI (built on itzg/mc-router) with Cloudflare DDNS, Crafty Controller integration, and Docker label discovery. mc-router and the web UI run together in a single container managed by supervisord. Both services run as the unprivileged user app (UID 1000): the container starts as root only to take ownership of its data directory and then drops privileges. Grant access to the Docker socket with the socket group id.</Overview>
   <Category>Network:Proxy: GameServers:</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
   <Icon>https://raw.githubusercontent.com/itzg/mc-router/master/docs/mc-router.png</Icon>
   <TemplateURL>https://raw.githubusercontent.com/Tamino089/mc-router-ui/master/my-mc-router-ui.xml</TemplateURL>
-  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mc-router-ui" Mode="rw" Description="Stores the SQLite database and persistent configuration. Must be writable by UID 1000." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Data Directory" Target="/data" Default="/mnt/user/appdata/mc-router-ui" Mode="rw" Description="Stores the SQLite database and persistent configuration. Ownership is repaired automatically on start. Only needs to be writable by UID 1000 if you run the container as a different user." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="Crafty Servers Directory (optional)" Target="/crafty/servers" Default="/mnt/user/appdata/Crafty_4/servers" Mode="rw" Description="Mount Crafty's servers directory to allow port changes through server.properties." Type="Path" Display="always" Required="false" Mask="false"/>
   <Config Name="Docker Socket (optional)" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="ro" Description="Mount the Docker socket to discover routes from container labels. Read-only." Type="Path" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Minecraft Port" Target="MC_PORT" Default="25565" Description="Minecraft ingress port." Type="Variable" Display="always" Required="true" Mask="false"/>

@@ -21,8 +21,8 @@ supervisord.
 - TCP health checks with latency history
 - Live updates over server-sent events
 - Multi-user with granular permissions
-- PBKDF2 passwords, signed sessions, same-origin enforcement, strict CSP, and an
-  unprivileged container
+- PBKDF2 passwords, signed sessions, same-origin enforcement, strict CSP, and
+  services that run as an unprivileged user
 
 ## Quick start
 
@@ -55,17 +55,52 @@ routable LAN addresses such as `192.168.1.50:25565`.
 
 ### Docker socket
 
-Route discovery needs `/var/run/docker.sock`. The container runs unprivileged, so
+Route discovery needs `/var/run/docker.sock`. Both services run as UID 1000, so
 grant the socket's group id (`stat -c '%g' /var/run/docker.sock`, often 999):
 
 ```yaml
     group_add: ["999"]
 ```
 
+Supplementary groups are preserved when the entrypoint drops privileges, so
+`group_add` keeps working.
+
+### Data directory and permissions
+
+The container starts as root only long enough to take ownership of `/data`, then
+drops to UID 1000 before supervisord starts either service. A data directory left
+behind by an older install (root-owned, or a `0444` database) is therefore
+repaired automatically on start:
+
+```
+[entrypoint] /data is owned by 0:0, taking ownership for app
+[entrypoint] starting as app (1000:1000)
+```
+
+If you start the container with an explicit user, for example `--user 99:100`,
+ownership cannot be repaired from inside. The entrypoint says so in the logs and
+you have to fix it on the host:
+
+```bash
+chown -R 1000:1000 /path/to/appdata/mc-router-ui
+```
+
+### Logs
+
+supervisord and both services log to stdout and stderr, so `docker logs` and the
+unRAID log viewer show everything, including Python tracebacks:
+
+```bash
+docker logs -f mc-router-ui
+```
+
 ### Unraid
 
 Import `my-mc-router-ui.xml`, then install from **Docker, then Add Container,
 then Template, then MC-Router-UI**. The template defaults to host networking.
+Before 1.0.1 the container could not repair its data directory, so an existing
+root-owned `mcrouter-ui.db` made the web UI exit at startup; update the container
+and it repairs itself.
 
 ## Configuration
 
@@ -160,6 +195,23 @@ tagged `latest` and by commit SHA.
   capability.
 
 ## Troubleshooting
+
+Start with the logs, which now include the services themselves:
+
+```bash
+docker logs mc-router-ui
+```
+
+**The web UI is missing but mc-router is running**: look for
+`attempt to write a readonly database` or `Failed to initialize the database`.
+The web UI refuses to start when it cannot persist its session key. The container
+repairs `/data` ownership on start, so this only happens if you run it with an
+explicit `--user` that cannot write `/data`; the log line names the exact uid and
+command to fix it.
+
+**`web-ui` is in a FATAL state**: supervisord gives up after five failed starts
+and will not retry until the container is restarted. Fix the cause, then
+`docker restart mc-router-ui`.
 
 **Routes never become reachable**: the container cannot reach the backend. See
 Networking above.

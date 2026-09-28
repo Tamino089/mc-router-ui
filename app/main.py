@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -40,9 +41,15 @@ try:
 except Exception:
 
     logger.critical(
-        "Failed to initialize database. Refusing to start without a persistent "
-        "session key. Check that DB_PATH (%s) is writable.",
+        "Failed to initialize the database at %s. Refusing to start without a "
+        "persistent session key. The web UI runs as uid %s and needs write access "
+        "to that file and to its directory: on the host run "
+        "'chown -R %s:%s <appdata directory>', or start the container as root so "
+        "the entrypoint can repair it.",
         config.DB_PATH,
+        os.getuid(),
+        os.getuid(),
+        os.getgid(),
     )
     raise
 

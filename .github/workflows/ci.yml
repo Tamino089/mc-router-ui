@@ -61,15 +61,76 @@ jobs:
             fi
             sleep 2
           done
-          echo "container runs as: $(docker exec ci-mc-router-ui id -un)"
-          docker exec ci-mc-router-ui id -un | grep -qx app \
-            || { echo "::error::container is not running as the unprivileged app user"; exit 1; }
+          echo "services run as (read from /proc, the image has no ps):"
+          # The entrypoint starts as root to repair the data directory, so assert
+          # that the services themselves still run unprivileged.
+          docker exec ci-mc-router-ui python3 -c "
+          import os, pwd, sys
+          found = {}
+          for pid in filter(str.isdigit, os.listdir('/proc')):
+              try:
+                  with open('/proc/%s/cmdline' % pid, 'rb') as handle:
+                      cmdline = handle.read().decode('utf-8', 'replace').replace(chr(0), ' ')
+                  uid = os.stat('/proc/' + pid).st_uid
+              except OSError:
+                  continue
+              if 'app.main:app' in cmdline:
+                  found['uvicorn'] = uid
+              elif 'api-binding' in cmdline:
+                  found['mc-router'] = uid
+          for name, uid in sorted(found.items()):
+              print('  %-10s uid=%s (%s)' % (name, uid, pwd.getpwuid(uid).pw_name))
+          missing = {'uvicorn', 'mc-router'} - set(found)
+          wrong = {n: u for n, u in found.items() if u != 1000}
+          if missing or wrong:
+              sys.exit('::error::expected both services as uid 1000, got %s (missing %s)' % (found, missing))
+          "
+      - name: Smoke test the logs reach docker logs
+        run: |
+          # Child output used to go to files inside the container, which made a
+          # crash loop look like an empty log in the unRAID UI.
+          docker logs ci-mc-router-ui 2>&1 | grep -q "Uvicorn running on" \
+            || { echo "::error::the web UI's own output is not in docker logs"; docker logs ci-mc-router-ui; exit 1; }
+          docker logs ci-mc-router-ui 2>&1 | grep -q "supervisord started" \
+            || { echo "::error::supervisord's activity log is not in docker logs"; exit 1; }
+      - name: Smoke test repair of a root-owned data directory
+        run: |
+          # Reproduce a bind mount left behind by an older install: a root-owned,
+          # read-only database inside a directory the app user cannot write.
+          docker volume create ci-mc-router-ui-data
+          docker run --rm -v ci-mc-router-ui-data:/data --entrypoint /bin/sh \
+            mc-router-ui:ci -c 'touch /data/mcrouter-ui.db && chmod 444 /data/mcrouter-ui.db && chown -R 0:0 /data && chmod 555 /data && ls -ld /data /data/mcrouter-ui.db'
+          docker run -d --name ci-mc-router-ui-repair \
+            -v ci-mc-router-ui-data:/data \
+            -e ADMIN_PASSWORD=ci-test-password \
+            -e LOG_LEVEL=ERROR \
+            mc-router-ui:ci
+          for attempt in $(seq 1 30); do
+            if docker exec ci-mc-router-ui-repair python -c \
+              "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"; then
+              echo "web UI recovered a root-owned data directory"
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::the web UI did not recover a root-owned data directory"
+              docker logs ci-mc-router-ui-repair
+              exit 1
+            fi
+            sleep 2
+          done
+          docker logs ci-mc-router-ui-repair 2>&1 | grep -q "taking ownership" \
+            || { echo "::error::the entrypoint did not report repairing ownership"; exit 1; }
+          docker exec ci-mc-router-ui-repair stat -c '%U:%G %a %n' /data /data/mcrouter-ui.db
       - name: Container logs
         if: always()
-        run: docker logs ci-mc-router-ui || true
+        run: |
+          docker logs ci-mc-router-ui || true
+          docker logs ci-mc-router-ui-repair || true
       - name: Cleanup
         if: always()
-        run: docker rm -f ci-mc-router-ui || true
+        run: |
+          docker rm -f ci-mc-router-ui ci-mc-router-ui-repair || true
+          docker volume rm ci-mc-router-ui-data || true
 
   scan:
     name: Scan image

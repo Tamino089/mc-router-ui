@@ -73,9 +73,9 @@ services:
 
     volumes:
       - mc-router-ui-data:/data
-      # Read-only socket for route discovery. The container runs unprivileged, so
+      # Read-only socket for route discovery. Both services run as UID 1000, so
       # grant access with group_add (the group id of the socket owner, 999 on a
-      # typical Linux Docker install) or override with `user: root`.
+      # typical Linux Docker install).
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
     group_add:
@@ -85,6 +85,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The entrypoint starts as root, repairs ownership of /data and then drops to
+    # UID 1000 before supervisord runs. With cap_drop: ALL those two steps need
+    # these capabilities back; the services themselves stay unprivileged.
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - SETUID
+      - SETGID
 
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=4)"]
