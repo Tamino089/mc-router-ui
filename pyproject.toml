@@ -6,16 +6,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
-    "fastapi==0.115.12",
-    "uvicorn[standard]==0.34.3",
+    "fastapi==0.142.0",
+    "uvicorn[standard]==0.54.0",
     "httpx==0.28.1",
     "jinja2==3.1.6",
-    "python-multipart==0.0.20",
+    "python-multipart==0.0.32",
     "itsdangerous==2.2.0",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff==0.11.13"]
+dev = ["ruff==0.16.9"]
 
 [tool.ruff]
 target-version = "py312"
